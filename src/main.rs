@@ -15,7 +15,4 @@ fn read(path: &str) {
     let mut out = std::io::stdout();
     out.write_all(&content_bytes).unwrap();
     out.flush().unwrap();
-
-    dat_file::DATFile::create_unsafe("TEST.DAT", dat_type::DATType::Unknown, 6, 7, 0xFF).unwrap();
-    dat_file::write_content("TEST.DAT", b"Boop!").unwrap();
 }

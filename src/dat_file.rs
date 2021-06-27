@@ -589,11 +589,16 @@ impl DATFile {
 /// 0                                               1
 /// 0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f  0  
 /// |-+-++-+-|  |-+-++-+-|  |-+-++-+-|  |-+-++-+-|  |
-/// |           |           |           |           \_ FF for ^0x73 files, const specific to type for ^0x31 (header delim?)
-/// |           |           |           \_ null (reserved?)
-/// |           |           \_ u32le content_size (includes terminating null byte)
-/// |           \_ u32le max_size (size on disk - 32; header is 17 bytes and files are null padded by a minimum of 15 bytes)
-/// \_ u32le file_type (constant value(s) per file type; probably actually 2 distinct bytes -> always <byte null byte null>)
+/// |           |           |           |           \_ u8 header_end_byte
+/// |           |           |           |              0xFF for all ^0x73 files, unique static values for ^0x31
+/// |           |           |           \_ null 
+/// |           |           |              reserved?
+/// |           |           \_ u32le content_size 
+/// |           |              (includes terminating null byte)
+/// |           \_ u32le max_size 
+/// |              max content_size allowed; size on disk - 32 -> 17 byte header + minimum 15-byte null pad footer
+/// \_ u32le file_type
+///    constant value(s) per file type; probably actually 2 distinct bytes -> always <byte null byte null>
 /// ```
 pub fn get_header_contents(header: &[u8; HEADER_SIZE as usize]) -> Result<(DATType, u32, u32, u8), DATError> {
     // If these fail, something is very wrong.
