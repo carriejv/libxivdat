@@ -113,7 +113,6 @@ pub fn get_default_end_byte_for_type(file_type: &DATType) -> Option<u8> {
     }
 }
 
-
 /// Gets the default maximum content size of a DAT file for a given type.
 /// Returns `None` if the file is of unknown type or has no standard size.
 ///

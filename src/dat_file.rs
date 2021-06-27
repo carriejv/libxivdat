@@ -3,8 +3,8 @@ use std::fs::{File, Metadata, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
-use crate::dat_type::*;
 use crate::dat_error::DATError;
+use crate::dat_type::*;
 
 /// Header size in bytes.
 pub const HEADER_SIZE: u32 = 0x11;
@@ -28,7 +28,7 @@ const INDEX_CONTENT_SIZE: usize = 0x08;
 /// # Examples
 /// ```rust
 /// use libxivdat::dat_file::{DATFile,DATType};
-/// 
+///
 /// let mut dat_file = DATFile::open("GEARSET.DAT")?;
 /// if dat_file.file_type == DATType::Gearset {
 ///     let mut gs_1_bytes = [0u8; 444];
@@ -40,14 +40,15 @@ const INDEX_CONTENT_SIZE: usize = 0x08;
 /// ```
 #[derive(Debug)]
 pub struct DATFile {
-    /// Size in bytes of the readable content of the DAT file.
+    /// Size in bytes of the readable content of the DAT file. This size includes a trailing null byte.
+    /// The size of readable content is 1 less than this value.
     content_size: u32,
     /// Type of the file. This will be inferred from the header when converting directly from a `File`.
     file_type: DATType,
     /// A single byte that marks the end of the header. This is `0xFF` for most DAT files, but occasionally varies.
     /// The purpose of this byte is unknown.
     header_end_byte: u8,
-    /// Maximum allowed size of the content in bytes.
+    /// Maximum allowed size of the content in bytes. The writeable size is 1 byte less than this value.
     /// Excess available space not used by content is null padded.
     ///
     /// Altering this value from the defaults provided for each file type may
@@ -60,12 +61,18 @@ pub struct DATFile {
 impl Read for DATFile {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         // Limit read size to content region of the DAT file.
-        // Some DAT content is not fully indexible on usize = 16 platforms. In this case, the check is ignored, since buf length cannot be longer.
-        let content_size = usize::try_from(self.content_size);
-        let read_len = match content_size {
-            Ok(content_size) if buf.len() > content_size => content_size,
-            _ => buf.len(),
+        let cur_pos = self.stream_position()? as u32;
+        let max_end = self.content_size - 1;
+        let read_end = match u32::try_from(buf.len()) {
+            Ok(safe_buf_len) if cur_pos + safe_buf_len < max_end => cur_pos + safe_buf_len,
+            // Maximum read extent should be the last byte of content (excluding the terminating null).
+            _ => max_end,
         };
+        // read_len can never be larger than the input buffer len
+        let read_len = (read_end - cur_pos) as usize;
+        if read_len < 1 {
+            return Ok(0);
+        }
         // Initialize a temporary buffer used for applying masks
         let mut internal_buf = vec![0u8; read_len];
         let count = self.raw_file.read(&mut internal_buf)?;
@@ -90,7 +97,7 @@ impl Seek for DATFile {
         let cursor = match pos {
             // Match `File` behavior of complaining if cursor goes negative relative to start.
             SeekFrom::Current(offset) => {
-                if self.raw_file.seek(SeekFrom::Current(0))? as i64 + offset < HEADER_SIZE as i64 {
+                if self.raw_file.stream_position()? as i64 + offset < HEADER_SIZE as i64 {
                     return Err(std::io::Error::new(
                         std::io::ErrorKind::InvalidInput,
                         "Invalid argument",
@@ -101,12 +108,13 @@ impl Seek for DATFile {
             }
             // Treat content end as EOF and seek backwards from there
             SeekFrom::End(offset) => self.raw_file.seek(SeekFrom::End(
-                offset - (self.max_size as i64 - self.content_size as i64),
+                offset
+                    - (self.max_size as i64 - self.content_size as i64)
+                    - (MAX_SIZE_OFFSET as i64 - HEADER_SIZE as i64)
+                    - 1,
             ))?,
             // Just offset the seek, treating first content byte as 0.
-            SeekFrom::Start(offset) => self
-                .raw_file
-                .seek(SeekFrom::Start(HEADER_SIZE as u64 + offset))?,
+            SeekFrom::Start(offset) => self.raw_file.seek(SeekFrom::Start(HEADER_SIZE as u64 + offset))?,
         };
         Ok(cursor - HEADER_SIZE as u64)
     }
@@ -115,10 +123,10 @@ impl Seek for DATFile {
 impl Write for DATFile {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         // Get current cursor position for length checking.
-        let content_cursor = self.seek(SeekFrom::Current(0))?;
+        let content_cursor = self.stream_position()? as u32;
 
-        // A buf longer than u64 max is always too long
-        let buf_len = match u64::try_from(buf.len()) {
+        // A buf longer than u32 max is always too long
+        let buf_len = match u32::try_from(buf.len()) {
             Ok(len) => len,
             Err(_) => {
                 return Err(std::io::Error::new(
@@ -130,15 +138,13 @@ impl Write for DATFile {
 
         // Update content size if necessary
         // A content size > u32 max is always too long.
-        match u32::try_from(content_cursor + buf_len) {
+        match u32::try_from(content_cursor + buf_len + 1) {
             Ok(new_content_size) if new_content_size > self.content_size => {
                 // A content size > max size is too long
                 if new_content_size > self.max_size {
                     return Err(std::io::Error::new(
                         std::io::ErrorKind::InvalidInput,
-                        DATError::ContentOverflow(
-                            "Content size would exdeed maximum size after write.",
-                        ),
+                        DATError::ContentOverflow("Content size would exdeed maximum size after write."),
                     ));
                 }
                 // Write the new content size
@@ -148,7 +154,9 @@ impl Write for DATFile {
             Err(_) => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
-                    DATError::ContentOverflow("Content size would exceed maximum possible size (u32::MAX) after write."),
+                    DATError::ContentOverflow(
+                        "Content size would exceed maximum possible size (u32::MAX) after write.",
+                    ),
                 ))
             }
         };
@@ -175,9 +183,11 @@ impl Write for DATFile {
 
 impl DATFile {
     /// Returns the size of the current content contained in the DAT file.
-    /// 
+    /// DAT files store content as a null-terminated CString, so this size
+    /// is one byte larger than the actual content.
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```rust
     /// let mut dat_file = DATFile::open("MACRO.DAT")?;
     /// let content_size = dat_file.content_size();
@@ -188,13 +198,13 @@ impl DATFile {
 
     /// Creates a new DAT file with an empty content block in read/write mode.
     /// This will truncate an existing file if one exists at the specified path.
-    /// 
+    ///
     /// By default, this will use the default max size for the specified type from
     /// [`get_default_max_size_for_type()`](crate::dat_type::get_default_max_size_for_type()) and
     /// default header ending from [`get_default_end_byte_for_type()`](crate::dat_type::get_default_end_byte_for_type()).
     /// To cicumvent this behavior, you can use [`create_unsafe()`](Self::create_unsafe()`). Note
     /// that DAT files with nonstandard sizes may produce undefined behavior in the game client.
-    /// 
+    ///
     /// # Errors
     ///
     /// If an I/O error creating the file occurs, a [`DATError::FileIO`](crate::dat_error::DATError::FileIO)
@@ -213,10 +223,10 @@ impl DATFile {
 
     /// Creates a new DAT file with a null-padded content bock of the specifed size in read/write mode.
     /// This will truncate an existing file if one exists at the specified path.
-    /// 
+    ///
     /// This function allows a custom, not-necessarily-valid maximum length and end byte to be set. Note
     /// that DAT files with nonstandard sizes and headers may produce undefined behavior in the game client.
-    /// 
+    ///
     /// # Errors
     ///
     /// If an I/O error creating the file occurs, a [`DATError::FileIO`](crate::dat_error::DATError::FileIO)
@@ -228,7 +238,9 @@ impl DATFile {
     /// // Create an empty (content length 0) macro file.
     /// let mut dat_file = DATFile::create_unsafe("PROBABLY_NOT_VALID.DAT", DATType::Macro, 0, 1024, 0x01)?;
     /// ```
-    pub fn create_unsafe<P: AsRef<Path>>(path: P, dat_type: DATType, content_size: u32, max_size: u32, end_byte: u8) -> Result<Self, DATError> {
+    pub fn create_unsafe<P: AsRef<Path>>(
+        path: P, dat_type: DATType, content_size: u32, max_size: u32, end_byte: u8,
+    ) -> Result<Self, DATError> {
         // Create a minimal content size 0 DAT file, then reopen it as a DATFile.
         {
             let mut raw_file = File::create(&path)?;
@@ -239,6 +251,10 @@ impl DATFile {
             // Write header max_size
             raw_file.seek(SeekFrom::Start(INDEX_MAX_SIZE as u64))?;
             raw_file.write(&max_size.to_le_bytes())?;
+            // Write a content size header of 1 (content size 0 is invalid).
+            // Real content size is set below and padded apprioriately.
+            raw_file.seek(SeekFrom::Start(INDEX_CONTENT_SIZE as u64))?;
+            raw_file.write(&1u32.to_le_bytes())?;
             // End header
             raw_file.seek(SeekFrom::Start(HEADER_SIZE as u64 - 1))?;
             raw_file.write(&[end_byte])?;
@@ -251,16 +267,16 @@ impl DATFile {
 
     /// Creates a new DAT file with a specific content block in read/write mode.
     /// This will truncate an existing file if one exists at the specified path.
-    /// 
+    ///
     /// This is shorthand for creating the DAT file, then calling
     /// [`write()`](Self::write()).
-    /// 
+    ///
     /// By default, this will use the default max size for the specified type from
     /// [`get_default_max_size_for_type()`](crate::dat_type::get_default_max_size_for_type()) and
     /// default header ending from [`get_default_end_byte_for_type()`](crate::dat_type::get_default_end_byte_for_type()).
     /// To cicumvent this behavior, you can use [`create_unsafe()`](Self::create_unsafe()`). Note
     /// that DAT files with nonstandard sizes may produce undefined behavior in the game client.
-    /// 
+    ///
     /// # Errors
     ///
     /// If an I/O error creating the file occurs, a [`DATError::FileIO`](crate::dat_error::DATError::FileIO)
@@ -283,9 +299,9 @@ impl DATFile {
     }
 
     /// Returns the file type of the DAT file.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```rust
     /// let mut dat_file = DATFile::open("MACRO.DAT")?;
     /// match dat_file.content_size() {
@@ -300,9 +316,9 @@ impl DATFile {
     /// Returns the terminating byte of the DAT file's
     /// header. The purpose of this byte is unknown,
     /// but it is almost always 0xFF.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```rust
     /// let mut dat_file = DATFile::open("MACRO.DAT")?;
     /// let header_end_byte = dat_file.header_end_byte();
@@ -312,10 +328,11 @@ impl DATFile {
     }
 
     /// Returns the maximum size allowed for the content block
-    /// of the DAT file.
-    /// 
+    /// of the DAT file. Content is stored as a null-terminated CString,
+    /// so the actual maximum allowed content is 1 byte less than `max_size`.
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```rust
     /// let mut dat_file = DATFile::open("MACRO.DAT")?;
     /// let max_size = dat_file.max_size();
@@ -386,10 +403,7 @@ impl DATFile {
     ///     .write(true)
     ///     .create(true))?;
     /// ```
-    pub fn open_options<P: AsRef<Path>>(
-        path: P,
-        options: &mut OpenOptions,
-    ) -> Result<Self, DATError> {
+    pub fn open_options<P: AsRef<Path>>(path: P, options: &mut OpenOptions) -> Result<Self, DATError> {
         let mut raw_file = options.open(path)?;
         let mut header_bytes = [0u8; HEADER_SIZE as usize];
         raw_file.read_exact(&mut header_bytes)?;
@@ -405,7 +419,9 @@ impl DATFile {
 
     /// Truncates or extends the readable content section of the DAT file.
     /// This emulates the behavior of [`std::fs::File::set_len()`], but only
-    /// operates on the content region of the DAT file.
+    /// operates on the content region of the DAT file. Because DAT files store
+    /// content as null-terminated CStrings, the actual writeable space will be
+    /// one byte less than specified.
     ///
     /// # Errors
     ///
@@ -422,9 +438,7 @@ impl DATFile {
         }
         // Check for valid size
         if size > self.max_size {
-            return Err(DATError::ContentOverflow(
-                "Content size would exceed maximum size.",
-            ));
+            return Err(DATError::ContentOverflow("Content size would exceed maximum size."));
         }
         // Save pre-run cursor.
         let pre_cursor = self.raw_file.seek(SeekFrom::Current(0))?;
@@ -434,7 +448,7 @@ impl DATFile {
             self.seek(SeekFrom::End(0))?;
             (
                 get_mask_for_type(&self.file_type).unwrap_or(0),
-                self.max_size - size,
+                self.max_size - size - 1,
             )
         } else {
             self.seek(SeekFrom::Start(size as u64))?;
@@ -443,16 +457,14 @@ impl DATFile {
         // Handle having to write in chunks for usize = 16.
         match usize::try_from(write_size) {
             Ok(safe_write_size) => {
-                self.raw_file
-                    .write(&mut vec![padding_byte; safe_write_size])?;
+                self.raw_file.write(&mut vec![padding_byte; safe_write_size])?;
             }
             Err(_) => {
                 let mut remaining_bytes = write_size;
                 loop {
                     match usize::try_from(remaining_bytes) {
                         Ok(safe_write_size) => {
-                            self.raw_file
-                                .write(&mut vec![padding_byte; safe_write_size])?;
+                            self.raw_file.write(&mut vec![padding_byte; safe_write_size])?;
                             break;
                         }
                         Err(_) => {
@@ -472,6 +484,8 @@ impl DATFile {
 
     /// Truncates or extends the full DAT file.
     /// This emulates the behavior of [`std::fs::File::set_len()`].
+    /// Because DAT files store content as null-terminated CStrings,
+    /// the actual useable space will be one byte less than specified.
     ///
     /// Files with a non-default maximum size may cause undefined behavior in the game client.
     ///
@@ -490,9 +504,7 @@ impl DATFile {
         }
         // Check for valid size
         if size < self.content_size {
-            return Err(DATError::ContentOverflow(
-                "Content size would exceed maximum size.",
-            ));
+            return Err(DATError::ContentOverflow("Content size would exceed maximum size."));
         }
         // Safe to resize
         self.raw_file.set_len((size + MAX_SIZE_OFFSET) as u64)?;
@@ -521,35 +533,34 @@ impl DATFile {
         Ok(self.raw_file.sync_data()?)
     }
 
-    /// Writes a new content size value to the [`DATFile`](Self) header, accounting for
-    /// numerical offsets. This updates both the struct and the file on disk.
-    /// This does not modify the actual content on disk.
+    /// Writes a new content size value to the [`DATFile`](Self) header.
+    /// This updates both the struct and the header of the file on disk.
+    /// This does not modify the actual content of the file.
     ///
-    /// This should be used to update the `content_size` on disk after writes that alter it.
+    /// This should be used to update the `content_size` after writes that alter it.
     ///
     /// # Errors
     ///
     /// May return a [`std::io::Error`] if one is returned by an underlying fs operation.
-    pub fn write_content_size_header(&mut self, size: u32) -> Result<(), std::io::Error> {
+    fn write_content_size_header(&mut self, size: u32) -> Result<(), std::io::Error> {
         let pre_cursor = self.raw_file.seek(SeekFrom::Current(0))?;
-        self.raw_file
-            .seek(SeekFrom::Start(INDEX_CONTENT_SIZE as u64))?;
+        self.raw_file.seek(SeekFrom::Start(INDEX_CONTENT_SIZE as u64))?;
         self.raw_file.write(&size.to_le_bytes())?;
         self.raw_file.seek(SeekFrom::Start(pre_cursor))?;
         self.content_size = size;
         Ok(())
     }
 
-    /// Writes a new max size value to the [`DATFile`](Self) header, accounting for
-    /// numerical offsets. This updates both the struct and the file on disk.
+    /// Writes a new max size value to the [`DATFile`](Self) header.
+    /// This updates both the struct and the header of the file on disk.
     /// This does not modify the actual size of the file.
     ///
-    /// This should be used to update the `content_size` on disk after writes that alter it.
+    /// This should be used to update the `max_size` after writes that alter it.
     ///
     /// # Errors
     ///
     /// May return a [`std::io::Error`] if one is returned by an underlying fs operation.
-    pub fn write_max_size_header(&mut self, size: u32) -> Result<(), std::io::Error> {
+    fn write_max_size_header(&mut self, size: u32) -> Result<(), std::io::Error> {
         let pre_cursor = self.raw_file.seek(SeekFrom::Current(0))?;
         self.raw_file.seek(SeekFrom::Start(INDEX_MAX_SIZE as u64))?;
         self.raw_file.write(&size.to_le_bytes())?;
@@ -578,20 +589,17 @@ impl DATFile {
 /// 0                                               1
 /// 0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f  0  
 /// |-+-++-+-|  |-+-++-+-|  |-+-++-+-|  |-+-++-+-|  |
-/// |           |           |           |           \_ FF for XOR 0x73 files, const specific to type for XOR 0x31 (header delim?)
-/// |           |           |           \_ nul (reserved?)
+/// |           |           |           |           \_ FF for ^0x73 files, const specific to type for ^0x31 (header delim?)
+/// |           |           |           \_ null (reserved?)
 /// |           |           \_ u32le content_size (includes terminating null byte)
-/// |           \_ u32le max_size (size on disk - 32)
-/// \_ u32 file_type (constant value(s) per file type; probably actually 2 distinct bytes -> always <byte null byte null>)
+/// |           \_ u32le max_size (size on disk - 32; header is 17 bytes and files are null padded by a minimum of 15 bytes)
+/// \_ u32le file_type (constant value(s) per file type; probably actually 2 distinct bytes -> always <byte null byte null>)
 /// ```
-pub fn get_header_contents(
-    header: &[u8; HEADER_SIZE as usize],
-) -> Result<(DATType, u32, u32, u8), DATError> {
+pub fn get_header_contents(header: &[u8; HEADER_SIZE as usize]) -> Result<(DATType, u32, u32, u8), DATError> {
     // If these fail, something is very wrong.
     let file_type_id = u32::from_le_bytes(header[INDEX_FILE_TYPE..INDEX_MAX_SIZE].try_into()?);
     let max_size = u32::from_le_bytes(header[INDEX_MAX_SIZE..INDEX_CONTENT_SIZE].try_into()?);
-    let content_size =
-        u32::from_le_bytes(header[INDEX_CONTENT_SIZE..INDEX_CONTENT_SIZE + 4].try_into()?);
+    let content_size = u32::from_le_bytes(header[INDEX_CONTENT_SIZE..INDEX_CONTENT_SIZE + 4].try_into()?);
     let end_byte = header[HEADER_SIZE as usize - 1];
 
     // Validate that file type id bytes are present.
@@ -601,17 +609,10 @@ pub fn get_header_contents(
 
     // Validate that sizes make sense.
     if content_size > max_size {
-        return Err(DATError::BadHeader(
-            "Content size exceeds max size in header.",
-        ));
+        return Err(DATError::BadHeader("Content size exceeds max size in header."));
     }
 
-    Ok((
-        DATType::from(file_type_id),
-        max_size,
-        content_size,
-        end_byte,
-    ))
+    Ok((DATType::from(file_type_id), max_size, content_size, end_byte))
 }
 
 /// Attempts to read the entire content block of a DAT file, returning a byte vector.
@@ -627,12 +628,12 @@ pub fn get_header_contents(
 /// cannot be validated, indicating a non-DAT or corrupt file.
 ///
 /// A [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow) is returned if the content
-/// would exceed the maximum size specified in the header. 
+/// would exceed the maximum size specified in the header.
 ///
 /// On 16-bit platforms, a [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow) may be returned
 /// if the content is too long to fit into a 16-bit vec. Content length can never exceed u32::MAX, so this error
 /// is impossible on other platforms.
-/// 
+///
 /// # Examples
 ///
 /// ```rust
@@ -646,10 +647,10 @@ pub fn read_content<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, DATError> {
     Ok(buf)
 }
 
-/// Attempts to write an input buffer as the content block of a DAT File, 
-/// replacing the entire existing contents and returning the number of bytes written. 
+/// Attempts to write an input buffer as the content block of a DAT File,
+/// replacing the entire existing contents and returning the number of bytes written.
 /// This is a convenience function that automatically handles opening and closing the underlying file.
-/// 
+///
 /// This will only write to an existing DAT file. Use [`DATFile::create()`](crate::dat_file::DATFile::create())
 /// to create a new DAT file.
 ///
@@ -660,7 +661,7 @@ pub fn read_content<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, DATError> {
 ///
 /// A [`DATError::BadHeader`](crate::dat_error::DATError::BadHeader) will be returned if the file header
 /// cannot be validated, indicating a non-DAT or corrupt file.
-/// 
+///
 /// A [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow) is returned if the content
 /// would exceed the maximum size specified in the header or the maximum possible size (u32::MAX).
 ///
@@ -671,12 +672,14 @@ pub fn read_content<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, DATError> {
 /// ```
 pub fn write_content<P: AsRef<Path>>(path: P, buf: &[u8]) -> Result<usize, DATError> {
     let mut dat_file = DATFile::open_options(path, OpenOptions::new().read(true).write(true))?;
-    if let Ok(safe_content_size) = u32::try_from(buf.len()) {
-        dat_file.set_content_size(safe_content_size)?;
+    if let Ok(safe_content_size) = u32::try_from(buf.len() + 1) {
+        if safe_content_size != dat_file.content_size() {
+            dat_file.set_content_size(safe_content_size)?;
+        }
         Ok(dat_file.write(&buf)?)
+    } else {
+        Err(DATError::ContentOverflow(
+            "Content size would exceed maximum possible size (u32::MAX).",
+        ))
     }
-    else {
-        Err(DATError::ContentOverflow("Content size would exceed maximum possible size (u32::MAX)."))
-    }
-
 }

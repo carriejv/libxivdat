@@ -6,7 +6,7 @@ This is currently an unpublished WIP. 0.1.0 will be released when test coverage 
 
 ## DATFile
 
-`DATFile` provides a common, general-purpose for working with binary DAT files. `DATFile` acts similarly to Rust's std lib `File`, but automatically handles masking read/write streams and updating header values as necessary.
+`DATFile` provides a common, general-purpose method of working with binary DAT files. `DATFile` emulates Rust's std lib `File` but reads and writes only from the data content section of the DAT file, manages header records, and automatically applies masks as needed.
 
 ### Examples
 
@@ -67,8 +67,6 @@ Macro files will be targeted for this work first.
 ## Special Thanks
 
 [EmperorArthur/FFXIV_Settings](https://github.com/EmperorArthur/FFXIV_Settings) was my jumping off point for research when developing this library.
-
-Files seem to be loaded on char login and saved on logout.
 
 ## Contributing
 
