@@ -431,28 +431,28 @@ impl DATFile {
     /// Additionally, it may return a [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow)
     /// error if the new content size would exceed the maximum allowed size. This size may be adjusted using
     /// [`set_max_size()`](Self::set_max_size()), but modifying it may not produce a valid file for the game client.
-    pub fn set_content_size(&mut self, size: u32) -> Result<(), DATError> {
+    pub fn set_content_size(&mut self, new_size: u32) -> Result<(), DATError> {
         // Quick noop for no change
-        if size == self.content_size {
+        if new_size == self.content_size {
             return Ok(());
         }
         // Check for valid size
-        if size > self.max_size {
+        if new_size > self.max_size {
             return Err(DATError::ContentOverflow("Content size would exceed maximum size."));
         }
         // Save pre-run cursor.
         let pre_cursor = self.raw_file.seek(SeekFrom::Current(0))?;
         // For shrinks, fill with actual null bytes starting at new content end.
         // For grows, pad with the the content mask byte (null ^ mask) starting at old content end to new end.
-        let (padding_byte, write_size) = if size > self.content_size {
+        let (padding_byte, write_size) = if new_size > self.content_size {
             self.seek(SeekFrom::End(0))?;
             (
                 get_mask_for_type(&self.file_type).unwrap_or(0),
-                self.max_size - size - 1,
+                new_size - self.content_size,
             )
         } else {
-            self.seek(SeekFrom::Start(size as u64))?;
-            (0, size - self.content_size)
+            self.seek(SeekFrom::Start(new_size as u64))?;
+            (0, self.content_size - new_size)
         };
         // Handle having to write in chunks for usize = 16.
         match usize::try_from(write_size) {
@@ -476,7 +476,7 @@ impl DATFile {
             }
         }
         // Write the new content size to the header
-        self.write_content_size_header(size)?;
+        self.write_content_size_header(new_size)?;
         // Reset file cursor
         self.raw_file.seek(SeekFrom::Start(pre_cursor))?;
         Ok(())
@@ -497,19 +497,19 @@ impl DATFile {
     /// A [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow) is returned
     /// if the maximum size would be shorter than the content size after shrinking. To correct this,
     /// first [`set_content_size()`](Self::set_content_size()).
-    pub fn set_max_size(&mut self, size: u32) -> Result<(), DATError> {
+    pub fn set_max_size(&mut self, new_size: u32) -> Result<(), DATError> {
         // Quick noop for no change
-        if size == self.max_size {
+        if new_size == self.max_size {
             return Ok(());
         }
         // Check for valid size
-        if size < self.content_size {
+        if new_size < self.content_size {
             return Err(DATError::ContentOverflow("Content size would exceed maximum size."));
         }
         // Safe to resize
-        self.raw_file.set_len((size + MAX_SIZE_OFFSET) as u64)?;
+        self.raw_file.set_len((new_size + MAX_SIZE_OFFSET) as u64)?;
         // Write new max len to header
-        self.write_max_size_header(size)?;
+        self.write_max_size_header(new_size)?;
         Ok(())
     }
 
@@ -646,7 +646,7 @@ pub fn get_header_contents(header: &[u8; HEADER_SIZE as usize]) -> Result<(DATTy
 /// ```
 pub fn read_content<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, DATError> {
     let mut dat_file = DATFile::open(path)?;
-    let safe_content_size = usize::try_from(dat_file.content_size)?;
+    let safe_content_size = usize::try_from(dat_file.content_size - 1)?;
     let mut buf = vec![0u8; safe_content_size];
     dat_file.read(&mut buf)?;
     Ok(buf)
@@ -686,5 +686,111 @@ pub fn write_content<P: AsRef<Path>>(path: P, buf: &[u8]) -> Result<usize, DATEr
         Err(DATError::ContentOverflow(
             "Content size would exceed maximum possible size (u32::MAX).",
         ))
+    }
+}
+
+// --- Unit Tests
+
+#[cfg(test)]
+mod tests {
+    extern crate tempfile;
+    use tempfile::tempdir;
+
+    use std::fs::copy;
+    use super::*;
+    const TEST_PATH: &str = "./resources/TEST.DAT";
+    const TEST_MACRO_PATH: &str = "./resources/TEST_MACRO.DAT";
+    const TEST_CONTENTS: &[u8; 5] = b"Boop!";
+    const TEST_MACRO_CONTENTS: &[u8; 6] = b"Macro!";
+
+    #[test]
+    fn test_get_header_contents() -> Result<(), String> {
+        let header_bytes = [0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF];
+        let (dat_type, max_size, content_size, end_byte) = match get_header_contents(&header_bytes) {
+            Ok(res) => (res.0, res.1, res.2, res.3),
+            Err(err) => return Err(format!("{}", err))
+        };
+        assert_eq!(dat_type, DATType::Unknown);
+        assert_eq!(max_size, 2);
+        assert_eq!(content_size, 2);
+        assert_eq!(end_byte, 0xFF);
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_header_contents_error_bad_type() -> Result<(), String> {
+        let header_bytes = [0x00, 0x01, 0x00, 0x01, 0x02, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF];
+        let _ = match get_header_contents(&header_bytes) {
+            Ok(_) => return Err("No error returned.".to_owned()),
+            Err(err) => match err {
+                DATError::BadHeader(_) =>  return Ok(()),
+                _ => return Err(format!("Incorrect error: {}", err))
+            }
+        };
+    }
+
+    #[test]
+    fn test_get_header_contents_error_sizes() -> Result<(), String> {
+        let header_bytes = [0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF];
+        let _ = match get_header_contents(&header_bytes) {
+            Ok(_) => return Err("No error returned.".to_owned()),
+            Err(err) => match err {
+                DATError::BadHeader(_) =>  return Ok(()),
+                _ => return Err(format!("Incorrect error: {}", err))
+            }
+        };
+    }
+
+    #[test]
+    fn test_read_content() -> Result<(), String> {
+        match read_content(TEST_PATH) {
+            Ok(content_bytes) => {
+                Ok(assert_eq!(&content_bytes, TEST_CONTENTS))
+            },
+            Err(err) => {
+                Err(format!("Read error: {}", err))
+            }
+        }
+    }
+
+    #[test]
+    fn test_read_content_with_mask() -> Result<(), String> {
+        match read_content(TEST_MACRO_PATH) {
+            Ok(content_bytes) => {
+                Ok(assert_eq!(&content_bytes, TEST_MACRO_CONTENTS))
+            },
+            Err(err) => {
+                Err(format!("Read error: {}", err))
+            }
+        }
+    }
+
+    #[test]
+    fn test_write_content() -> Result<(), String> {
+        // Make a tempfile
+        let tmp_dir = match tempdir() {
+            Ok(tmp_dir) => tmp_dir,
+            Err(err) => return Err(format!("Error creating temp dir: {}", err))
+        };
+        let tmp_path = tmp_dir.path().join("TEST.DAT");
+        match copy(TEST_PATH, &tmp_path) {
+            Ok(_) => (),
+            Err(err) => return Err(format!("Could not create temp file for testing: {}", err))
+        };
+        // Write content
+        let new_content = b"Hi!";
+        match write_content(&tmp_path, new_content) {
+            Ok(_) => (),
+            Err(err) => return Err(format!("Error writing content: {}", err))
+        };
+        // Check content
+        match read_content(&tmp_path) {
+            Ok(content_bytes) => {
+                Ok(assert_eq!(&content_bytes, new_content))
+            },
+            Err(err) => {
+                Err(format!("Content not written correctly: {}", err))
+            }
+        }
     }
 }
