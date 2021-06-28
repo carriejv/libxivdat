@@ -10,11 +10,21 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+strategy:
+  matrix:
+    toolchain: [stable, nightly]
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
+    - name: Install toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: {{ matrix.toolchain }}
+        override: true
+        components: rustfmt, clippy
     - name: Build
       run: cargo build --verbose
     - name: Test
