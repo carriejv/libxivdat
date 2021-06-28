@@ -86,14 +86,11 @@ impl Read for DATFile {
         let mut internal_buf = vec![0u8; read_len];
         let count = self.raw_file.read(&mut internal_buf)?;
         // Apply XOR mask to content data if needed.
-        match get_mask_for_type(&self.file_type) {
-            Some(mask_val) => {
-                for byte in internal_buf.iter_mut() {
-                    *byte = *byte ^ mask_val;
-                }
+        if let Some(mask_val) = get_mask_for_type(&self.file_type) {
+            for byte in internal_buf.iter_mut() {
+                *byte ^= mask_val;
             }
-            None => (),
-        };
+        }
         // Copy internal buffer into input buffer.
         buf[..read_len].clone_from_slice(&internal_buf);
         Ok(count)
@@ -146,8 +143,8 @@ impl Write for DATFile {
 
         // Update content size if necessary
         // A content size > u32 max is always too long.
-        match u32::try_from(content_cursor + buf_len + 1) {
-            Ok(new_content_size) if new_content_size > self.content_size => {
+        match content_cursor.checked_add(buf_len + 1) {
+            Some(new_content_size) if new_content_size > self.content_size => {
                 // A content size > max size is too long
                 if new_content_size > self.max_size {
                     return Err(std::io::Error::new(
@@ -158,8 +155,8 @@ impl Write for DATFile {
                 // Write the new content size
                 self.write_content_size_header(new_content_size)?;
             }
-            Ok(_) => (),
-            Err(_) => {
+            Some(_) => (),
+            None => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
                     DATError::ContentOverflow(
@@ -175,7 +172,7 @@ impl Write for DATFile {
                 let mut masked_bytes = vec![0u8; buf.len()];
                 masked_bytes.copy_from_slice(buf);
                 for byte in masked_bytes.iter_mut() {
-                    *byte = *byte ^ mask_val;
+                    *byte ^=  mask_val;
                 }
                 Ok(self.raw_file.write(&masked_bytes)?)
             }
@@ -184,7 +181,7 @@ impl Write for DATFile {
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        Ok(self.raw_file.flush()?)
+        self.raw_file.flush()
     }
 }
 
@@ -271,17 +268,17 @@ impl DATFile {
             raw_file.set_len((max_size + MAX_SIZE_OFFSET) as u64)?;
             // Write header type
             raw_file.seek(SeekFrom::Start(INDEX_FILE_TYPE as u64))?;
-            raw_file.write(&(dat_type as i32).to_le_bytes())?;
+            raw_file.write_all(&(dat_type as i32).to_le_bytes())?;
             // Write header max_size
             raw_file.seek(SeekFrom::Start(INDEX_MAX_SIZE as u64))?;
-            raw_file.write(&max_size.to_le_bytes())?;
+            raw_file.write_all(&max_size.to_le_bytes())?;
             // Write a content size header of 1 (content size 0 is invalid).
             // Real content size is set below and padded apprioriately.
             raw_file.seek(SeekFrom::Start(INDEX_CONTENT_SIZE as u64))?;
-            raw_file.write(&1u32.to_le_bytes())?;
+            raw_file.write_all(&1u32.to_le_bytes())?;
             // End header
             raw_file.seek(SeekFrom::Start(HEADER_SIZE as u64 - 1))?;
-            raw_file.write(&[end_byte])?;
+            raw_file.write_all(&[end_byte])?;
         }
         let mut dat_file = DATFile::open_options(path, OpenOptions::new().read(true).write(true).create(true))?;
         // Write the content block and content_size header.
@@ -327,7 +324,7 @@ impl DATFile {
         let max_size = get_default_max_size_for_type(&dat_type).unwrap_or(0);
         let end_byte = get_default_end_byte_for_type(&dat_type).unwrap_or(0);
         let mut dat_file = Self::create_unsafe(path, dat_type, 1, max_size, end_byte)?;
-        dat_file.write(&content)?;
+        dat_file.write_all(&content)?;
         dat_file.seek(SeekFrom::Start(0))?;
         Ok(dat_file)
     }
@@ -415,13 +412,13 @@ impl DATFile {
         let mut raw_file = File::open(path)?;
         let mut header_bytes = [0u8; HEADER_SIZE as usize];
         raw_file.read_exact(&mut header_bytes)?;
-        let (file_type, max_size, content_size, end_byte) = get_header_contents(&header_bytes)?;
+        let (file_type, max_size, content_size, header_end_byte) = get_header_contents(&header_bytes)?;
         Ok(DATFile {
-            content_size: content_size,
-            file_type: file_type,
-            header_end_byte: end_byte,
-            max_size: max_size,
-            raw_file: raw_file,
+            content_size,
+            file_type,
+            header_end_byte,
+            max_size,
+            raw_file
         })
     }
 
@@ -451,13 +448,13 @@ impl DATFile {
         let mut raw_file = options.open(path)?;
         let mut header_bytes = [0u8; HEADER_SIZE as usize];
         raw_file.read_exact(&mut header_bytes)?;
-        let (file_type, max_size, content_size, end_byte) = get_header_contents(&header_bytes)?;
+        let (file_type, max_size, content_size, header_end_byte) = get_header_contents(&header_bytes)?;
         Ok(DATFile {
-            content_size: content_size,
-            file_type: file_type,
-            header_end_byte: end_byte,
-            max_size: max_size,
-            raw_file: raw_file,
+            content_size,
+            file_type,
+            header_end_byte,
+            max_size,
+            raw_file,
         })
     }
 
@@ -504,18 +501,18 @@ impl DATFile {
         // Handle having to write in chunks for usize = 16.
         match usize::try_from(write_size) {
             Ok(safe_write_size) => {
-                self.raw_file.write(&mut vec![padding_byte; safe_write_size])?;
+                self.raw_file.write_all(&vec![padding_byte; safe_write_size])?;
             }
             Err(_) => {
                 let mut remaining_bytes = write_size;
                 loop {
                     match usize::try_from(remaining_bytes) {
                         Ok(safe_write_size) => {
-                            self.raw_file.write(&mut vec![padding_byte; safe_write_size])?;
+                            self.raw_file.write_all(&vec![padding_byte; safe_write_size])?;
                             break;
                         }
                         Err(_) => {
-                            self.raw_file.write(&mut vec![padding_byte; usize::MAX])?;
+                            self.raw_file.write_all(&vec![padding_byte; usize::MAX])?;
                             remaining_bytes -= usize::MAX as u32;
                         }
                     };
@@ -595,7 +592,7 @@ impl DATFile {
     fn write_content_size_header(&mut self, size: u32) -> Result<(), std::io::Error> {
         let pre_cursor = self.raw_file.seek(SeekFrom::Current(0))?;
         self.raw_file.seek(SeekFrom::Start(INDEX_CONTENT_SIZE as u64))?;
-        self.raw_file.write(&size.to_le_bytes())?;
+        self.raw_file.write_all(&size.to_le_bytes())?;
         self.raw_file.seek(SeekFrom::Start(pre_cursor))?;
         self.content_size = size;
         Ok(())
@@ -613,7 +610,7 @@ impl DATFile {
     fn write_max_size_header(&mut self, size: u32) -> Result<(), std::io::Error> {
         let pre_cursor = self.raw_file.seek(SeekFrom::Current(0))?;
         self.raw_file.seek(SeekFrom::Start(INDEX_MAX_SIZE as u64))?;
-        self.raw_file.write(&size.to_le_bytes())?;
+        self.raw_file.write_all(&size.to_le_bytes())?;
         self.raw_file.seek(SeekFrom::Start(pre_cursor))?;
         self.max_size = size;
         Ok(())
@@ -707,7 +704,7 @@ pub fn read_content<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, DATError> {
     let mut dat_file = DATFile::open(path)?;
     let safe_content_size = usize::try_from(dat_file.content_size - 1)?;
     let mut buf = vec![0u8; safe_content_size];
-    dat_file.read(&mut buf)?;
+    dat_file.read_exact(&mut buf)?;
     Ok(buf)
 }
 

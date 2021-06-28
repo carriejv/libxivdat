@@ -1,8 +1,19 @@
 # libxivdat
 
+[![Crates.io](https://img.shields.io/crates/v/libxivdat.svg)](https://crates.io/crates/libxivdat/)
+[![Doc.rs](https://docs.rs/libxivdat/badge.svg)](https://docs.rs/crate/libxivdat/)
+[![Apache-2.0](https://img.shields.io/github/license/carriejv/libxivdat)](https://github.com/carriejv/libxivdat/blob/master/LICENSE/)
+[![Build Status](https://github.com/carriejv/libxivdat/workflows/ci-build/badge.svg?branch=master)](https://github.com/carriejv/libxivdat/actions?query=workflow%3Aci-build)
+
 A library for working with Final Fantasy XIV .DAT files. These files store client-side game config including macros, hotkeys, and ui settings.
 
 This is still a work in progress and currently provides only low-level file io capabilities. See [future plans](#future-plans) for more info.
+
+## Minimum Supported Rust Version
+
+This library has been tested against Rust >=1.52.0. Earlier versions may work, but use at your own risk.
+
+CI builds are run against current stable and nightly at time of build.
 
 ## DATFile
 
@@ -32,38 +43,42 @@ Internally, some DAT file content blocks use a variable-length data structure re
 
 Other DAT files use fixed-size resource blocks, with each resource immediately following the last. These are referred to as "Block DATs" below.
 
-## Plaintext DAT files
+## Plaintext DAT Files
 
-Some DAT files (namely `COMMON.DAT`, `CONTROL0.DAT`, and `CONTROL1.DAT`) created by FF XIV are actually just UTF-8 plaintext and do not share a common format with the binary DAT files.
+Some DAT files (namely `COMMON.DAT`, `CONTROL0.DAT`, and `CONTROL1.DAT`) are actually just UTF-8 plaintext and do not share a common format with the binary DAT files.
 
 Support for working with plaintext DATs may happen at some future point, but isn't currently a priority.
 
+## Unique Binary DAT Files
+
+Two binary file types (`ADDON.DAT` and `FFXIV_CHARA_XX.DAT` files) do not use the common shared structure of other DAT files. Support for these files is not currently planned.
+
 ## Future Plans
 
-The goal of this library is to fully abstract the data structures of DAT files to allow interacting with the files via structured data as opposed to raw byte streams. Each file has its own internal data types, so these layers will be implemented one at a time as optional features.
+The goal of this library is to fully abstract the data structures of DAT files and create high-level, resource-based interfaces for each file type that operate on resources (ie, macros or gearsets) rather than raw byte streams. Each file has its own internal data types, so these layers will be implemented one at a time as optional features.
 
-My focus with this libary is mainly on macros, gearsets, and ui config. Fully abstracted support for other DAT types will liklely be a long time coming unless you build it yourself.
+My focus with this libary is mainly on macros, gearsets, and ui config. High level support for other DAT types will liklely be a long time coming unless you build it yourself.
 
 ## DAT Type Support
 
-| File               | Contains                         | Type       | DATFile Read/Write | High Level Structs |
-|--------------------|----------------------------------|------------|--------------------|--------------------|
-| ACQ.DAT            | Recent /tell history             | Section    |          ✔️        |          ✗         |
-| ADDON.DAT          | ?                                | Unique     |          ✗         |          ✗         |
-| COMMON.DAT         | Character configuration          | Plaintext  |          ✗         |          ✗         |
-| CONTROL0.DAT       | Gamepad control config           | Plaintext  |          ✗         |          ✗         |
-| CONTROL1.DAT       | Keyboard/mouse control config    | Plaintext  |          ✗         |          ✗         |
-| FFXIV_CHARA_XX.DAT | Character appearance presets     | Unique     |          ✗         |          ✗         |
-| GEARSET.DAT        | Gearsets                         | Block      |          ✔️        |          ✗         |
-| GS.DAT             | Gold Saucer config (Triad decks) | Block      |          ✔️        |          ✗         |
-| HOTBAR.DAT         | Hotbar layouts                   | Block      |          ✔️        |          ✗         |
-| ITEMFDR.DAT        | "Search for item" indexing?      | Block      |          ✔️        |          ✗         |
-| ITEMODR.DAT        | Item order in bags               | Block      |          ✔️        |          ✗         |
-| KEYBIND.DAT        | Keybinds                         | Section    |          ✔️        |          ✗         |
-| LOGFLTR.DAT        | Chat log filters?                | Block      |          ✔️        |          ✗         |
-| MACRO.DAT          | Character-specific macros        | Section    |          ✔️        |          ✗         |
-| MACROSYS.DAT       | System-wide macros               | Sections   |          ✔️        |          ✗         |
-| UISAVE.DAT         | UI config                        | Block      |          ✔️        |          ✗         |
+| File               | Contains                         | Type       | DATFile Read/Write | High Level Module |
+|--------------------|----------------------------------|------------|--------------------|-------------------|
+| ACQ.DAT            | Recent /tell history             | Section    |         ✅         |         ❌        |
+| ADDON.DAT          | ?                                | Unique     |         ❌         |         ❌        |
+| COMMON.DAT         | Character configuration          | Plaintext  |         ❌         |         ❌        |
+| CONTROL0.DAT       | Gamepad control config           | Plaintext  |         ❌         |         ❌        |
+| CONTROL1.DAT       | Keyboard/mouse control config    | Plaintext  |         ❌         |         ❌        |
+| FFXIV_CHARA_XX.DAT | Character appearance presets     | Unique     |         ❌         |         ❌        |
+| GEARSET.DAT        | Gearsets                         | Block      |         ✅         |         ❌        |
+| GS.DAT             | Gold Saucer config (Triad decks) | Block      |         ✅         |         ❌        |
+| HOTBAR.DAT         | Hotbar layouts                   | Block      |         ✅         |         ❌        |
+| ITEMFDR.DAT        | "Search for item" indexing?      | Block      |         ✅         |         ❌        |
+| ITEMODR.DAT        | Item order in bags               | Block      |         ✅         |         ❌        |
+| KEYBIND.DAT        | Keybinds                         | Section    |         ✅         |         ❌        |
+| LOGFLTR.DAT        | Chat log filters?                | Block      |         ✅         |         ❌        |
+| MACRO.DAT          | Character-specific macros        | Section    |         ✅         |         ❌        |
+| MACROSYS.DAT       | System-wide macros               | Sections   |         ✅         |         ❌        |
+| UISAVE.DAT         | UI config                        | Block      |         ✅         |         ❌        |
 
 ## Special Thanks
 
@@ -71,4 +86,4 @@ My focus with this libary is mainly on macros, gearsets, and ui config. Fully ab
 
 ## Contributing
 
-Contributions are always welcomed. Please ensure code passes `cargo test` and `rustfmt` before making pull requests.
+Contributions are always welcomed. Please ensure code passes `cargo test`, `cargo clippy`, and `rustfmt -v --check **/*.rs` before making pull requests.

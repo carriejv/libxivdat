@@ -2,7 +2,7 @@
 name = "libxivdat"
 version = "0.1.0"
 edition = "2018"
-license = "GPL-3.0"
+license = "Apache-2.0"
 description = "Read/write Final Fantasy XIV .DAT files."
 keywords = ["ff14", "xiv", "file", "dat", "io"]
 categories = ["encoding", "filesystem"]
