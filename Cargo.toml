@@ -3,13 +3,23 @@ name = "libxivdat"
 version = "0.1.0"
 edition = "2018"
 license = "GPL-3.0"
-description = "De/serialization for Final Fantasy XIV .DAT files."
+description = "Read/write Final Fantasy XIV .DAT files."
 keywords = ["ff14", "xiv", "file", "dat", "io"]
 categories = ["encoding", "filesystem"]
 authors = ["Carrie J V <carrie@carriejv.com"]
 homepage = "https://github.com/carriejv/libxivdat"
 repository = "https://github.com/carriejv/libxivdat"
 readme = "README.md"
+
+[lib]
+name = "libxivdat"
+path = "src/lib.rs"
+edition = "2018"
+crate-type = ["lib"]
+test = true
+doctest = true
+doc = true
+harness = true
 
 [dependencies]
 

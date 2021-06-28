@@ -27,16 +27,25 @@ const INDEX_CONTENT_SIZE: usize = 0x08;
 ///
 /// # Examples
 /// ```rust
-/// use libxivdat::dat_file::{DATFile,DATType};
+/// use libxivdat::dat_file::DATFile;
+/// use libxivdat::dat_type::DATType;
+/// use std::io::Read;
 ///
-/// let mut dat_file = DATFile::open("GEARSET.DAT")?;
-/// if dat_file.file_type == DATType::Gearset {
-///     let mut gs_1_bytes = [0u8; 444];
-///     dat_file.read(&gs_1_bytes)?;
-/// }
-/// else {
-///     panic!("Not a gearset file!");
-/// }
+/// let mut dat_file = match DATFile::open("./resources/TEST_MACRO.DAT") {
+///     Ok(dat_file) => dat_file,
+///     Err(_) => panic!("Something broke!")
+/// };
+/// 
+/// match dat_file.file_type() {
+///     DATType::Macro => {
+///         let mut macro_bytes = vec![0u8; dat_file.content_size() as usize - 1];
+///         match dat_file.read(&mut macro_bytes) {
+///             Ok(count) => println!("Read {} bytes.", count),
+///             Err(_) => panic!("Reading broke!")
+///         }
+///     },
+///     _ => panic!("Not a macro file!")
+/// };
 /// ```
 #[derive(Debug)]
 pub struct DATFile {
@@ -187,7 +196,9 @@ impl DATFile {
     /// # Examples
     ///
     /// ```rust
-    /// let mut dat_file = DATFile::open("MACRO.DAT")?;
+    /// use libxivdat::dat_file::DATFile;
+    /// 
+    /// let mut dat_file = DATFile::open("./resources/TEST.DAT").unwrap();
     /// let content_size = dat_file.content_size();
     /// ```
     pub fn content_size(&mut self) -> u32 {
@@ -211,7 +222,15 @@ impl DATFile {
     /// # Examples
     ///
     /// ```rust
-    /// let mut dat_file = DATFile::create("NEW_MACRO.DAT", DATType::Macro)?;
+    /// use libxivdat::dat_file::DATFile;
+    /// use libxivdat::dat_type::DATType;
+    /// 
+    /// # extern crate tempfile;
+    /// # use tempfile::tempdir;
+    /// # let temp_dir = tempdir().unwrap();
+    /// # let path = temp_dir.path().join("TEST.DAT");
+    /// 
+    /// let mut dat_file = DATFile::create(&path, DATType::Macro);
     /// ```
     pub fn create<P: AsRef<Path>>(path: P, dat_type: DATType) -> Result<Self, DATError> {
         let max_size = get_default_max_size_for_type(&dat_type).unwrap_or(0);
@@ -233,8 +252,16 @@ impl DATFile {
     /// # Examples
     ///
     /// ```rust
-    /// // Create an empty (content length 0) macro file.
-    /// let mut dat_file = DATFile::create_unsafe("PROBABLY_NOT_VALID.DAT", DATType::Macro, 0, 1024, 0x01)?;
+    /// use libxivdat::dat_file::DATFile;
+    /// use libxivdat::dat_type::DATType;
+    /// 
+    /// # extern crate tempfile;
+    /// # use tempfile::tempdir;
+    /// # let temp_dir = tempdir().unwrap();
+    /// # let path = temp_dir.path().join("TEST.DAT");
+    /// 
+    /// // Create an empty (content length 1) macro file with a custom max size and end byte. This probably isn't valid.
+    /// let mut dat_file = DATFile::create_unsafe(&path, DATType::Macro, 1, 1024, 0x01);
     /// ```
     pub fn create_unsafe<P: AsRef<Path>>(
         path: P, dat_type: DATType, content_size: u32, max_size: u32, end_byte: u8,
@@ -287,7 +314,15 @@ impl DATFile {
     /// # Examples
     ///
     /// ```rust
-    /// let mut dat_file = DATFile::create_with_content("NEW_MACRO.DAT", DATType::Macro, b"Not really a macro.")?;
+    /// use libxivdat::dat_file::DATFile;
+    /// use libxivdat::dat_type::DATType;
+    /// 
+    /// # extern crate tempfile;
+    /// # use tempfile::tempdir;
+    /// # let temp_dir = tempdir().unwrap();
+    /// # let path = temp_dir.path().join("TEST.DAT");
+    /// 
+    /// let mut dat_file = DATFile::create_with_content(&path, DATType::Macro, b"Not really a macro.");
     /// ```
     pub fn create_with_content<P: AsRef<Path>>(path: P, dat_type: DATType, content: &[u8]) -> Result<Self, DATError> {
         let max_size = get_default_max_size_for_type(&dat_type).unwrap_or(0);
@@ -303,10 +338,13 @@ impl DATFile {
     /// # Examples
     ///
     /// ```rust
-    /// let mut dat_file = DATFile::open("MACRO.DAT")?;
-    /// match dat_file.content_size() {
-    ///     DATType::Macro => println!("Macro file!")
-    ///     _ => println!("Nope!")
+    /// use libxivdat::dat_file::DATFile;
+    /// use libxivdat::dat_type::DATType;
+    /// 
+    /// let mut dat_file = DATFile::open("./resources/TEST_MACRO.DAT").unwrap();
+    /// match dat_file.file_type() {
+    ///     DATType::Macro => println!("Macro file!"),
+    ///     _ => panic!("Nope!")
     /// }
     /// ```
     pub fn file_type(&mut self) -> DATType {
@@ -320,7 +358,9 @@ impl DATFile {
     /// # Examples
     ///
     /// ```rust
-    /// let mut dat_file = DATFile::open("MACRO.DAT")?;
+    /// use libxivdat::dat_file::DATFile;
+    /// 
+    /// let mut dat_file = DATFile::open("./resources/TEST_MACRO.DAT").unwrap();
     /// let header_end_byte = dat_file.header_end_byte();
     /// ```
     pub fn header_end_byte(&mut self) -> u8 {
@@ -334,8 +374,10 @@ impl DATFile {
     /// # Examples
     ///
     /// ```rust
-    /// let mut dat_file = DATFile::open("MACRO.DAT")?;
-    /// let max_size = dat_file.max_size();
+    /// use libxivdat::dat_file::DATFile;
+    /// 
+    /// let mut dat_file = DATFile::open("./resources/TEST_MACRO.DAT").unwrap();
+    /// let header_end_byte = dat_file.max_size();
     /// ```
     pub fn max_size(&mut self) -> u32 {
         self.max_size
@@ -366,7 +408,9 @@ impl DATFile {
     /// # Examples
     ///
     /// ```rust
-    /// let mut dat_file = DATFile::open("MACRO.DAT")?;
+    /// use libxivdat::dat_file::DATFile;
+    /// 
+    /// let mut dat_file = DATFile::open("./resources/TEST.DAT");
     /// ```
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, DATError> {
         let mut raw_file = File::open(path)?;
@@ -397,11 +441,12 @@ impl DATFile {
     /// # Examples
     ///
     /// ```rust
+    /// use libxivdat::dat_file::DATFile;
     /// use std::fs::OpenOptions;
-    /// let mut dat_file = DATFile::open_options("MACRO.DAT", OpenOptions::new()
-    ///     .read(true)
-    ///     .write(true)
-    ///     .create(true))?;
+    /// 
+    /// let mut open_opts = OpenOptions::new();
+    /// open_opts.read(true).write(true);
+    /// let mut dat_file = DATFile::open_options("./resources/TEST.DAT", &mut open_opts);
     /// ```
     pub fn open_options<P: AsRef<Path>>(path: P, options: &mut OpenOptions) -> Result<Self, DATError> {
         let mut raw_file = options.open(path)?;
@@ -587,7 +632,14 @@ impl DATFile {
 ///
 /// # Examples
 /// ```rust
-/// let (type, max_size, content_size, end_byte) = dat_file::get_header_contents(&mut header_bytes);
+/// use libxivdat::dat_file::{get_header_contents, HEADER_SIZE};
+/// use std::fs::File;
+/// use std::io::Read;
+/// 
+/// let mut header_bytes = [0u8; HEADER_SIZE as usize];
+/// let mut file = File::open("./resources/TEST.DAT").unwrap();
+/// file.read(&mut header_bytes).unwrap();
+/// let (file_type, max_size, content_size, end_byte) = get_header_contents(&mut header_bytes).unwrap();
 /// ```
 ///
 /// # Data Structure
@@ -648,7 +700,9 @@ pub fn get_header_contents(header: &[u8; HEADER_SIZE as usize]) -> Result<(DATTy
 /// # Examples
 ///
 /// ```rust
-/// let dat_contents = dat_file::read_content("MACRO.DAT")?;
+/// use libxivdat::dat_file::read_content;
+/// 
+/// let dat_bytes = read_content("./resources/TEST.DAT").unwrap();
 /// ```
 pub fn read_content<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, DATError> {
     let mut dat_file = DATFile::open(path)?;
@@ -679,7 +733,17 @@ pub fn read_content<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, DATError> {
 /// # Examples
 ///
 /// ```rust
-/// dat_file.write_content("AWESOME.DAT", b"Who's awesome? You're awesome!")?;
+/// use libxivdat::dat_file::write_content;
+/// # use libxivdat::dat_file::DATFile;
+/// # use libxivdat::dat_type::DATType;
+/// 
+/// # extern crate tempfile;
+/// # use tempfile::tempdir;
+/// # let temp_dir = tempdir().unwrap();
+/// # let path = temp_dir.path().join("TEST.DAT");
+/// # DATFile::create(&path, DATType::Macro).unwrap();
+/// 
+/// write_content(&path, b"Who's awesome? You're awesome!").unwrap();
 /// ```
 pub fn write_content<P: AsRef<Path>>(path: P, buf: &[u8]) -> Result<usize, DATError> {
     let mut dat_file = DATFile::open_options(path, OpenOptions::new().read(true).write(true))?;
@@ -945,8 +1009,8 @@ mod tests {
                 assert_eq!(&buf[..8], &[34u8; 8]);
                 assert_eq!(&buf[8..], &[0u8; 8]);
                 Ok(())
-            },
-            Err(err) => return Err(format!("Error setting content size: {}", err))
+            }
+            Err(err) => return Err(format!("Error setting content size: {}", err)),
         }
     }
 
@@ -973,8 +1037,8 @@ mod tests {
                 assert_eq!(&buf[..4], &[34u8; 4]);
                 assert_eq!(&buf[4..], &[1u8; 4]);
                 Ok(())
-            },
-            Err(err) => return Err(format!("Error setting content size: {}", err))
+            }
+            Err(err) => return Err(format!("Error setting content size: {}", err)),
         }
     }
 
@@ -994,7 +1058,7 @@ mod tests {
             Err(err) => match err {
                 DATError::InvalidInput(_) => Ok(()),
                 _ => Err(format!("Incorrect error: {}", err)),
-            }
+            },
         }
     }
 
@@ -1014,7 +1078,7 @@ mod tests {
             Err(err) => match err {
                 DATError::ContentOverflow(_) => Ok(()),
                 _ => Err(format!("Incorrect error: {}", err)),
-            }
+            },
         }
     }
 
@@ -1039,8 +1103,8 @@ mod tests {
                 };
                 assert_eq!(meta.len(), 16 + MAX_SIZE_OFFSET as u64);
                 Ok(())
-            },
-            Err(err) => return Err(format!("Error setting content size: {}", err))
+            }
+            Err(err) => return Err(format!("Error setting content size: {}", err)),
         }
     }
 
@@ -1065,8 +1129,8 @@ mod tests {
                 };
                 assert_eq!(meta.len(), 6 + MAX_SIZE_OFFSET as u64);
                 Ok(())
-            },
-            Err(err) => return Err(format!("Error setting content size: {}", err))
+            }
+            Err(err) => return Err(format!("Error setting content size: {}", err)),
         }
     }
 
@@ -1086,7 +1150,7 @@ mod tests {
             Err(err) => match err {
                 DATError::InvalidInput(_) => Ok(()),
                 _ => Err(format!("Incorrect error: {}", err)),
-            }
+            },
         }
     }
 
@@ -1106,7 +1170,7 @@ mod tests {
             Err(err) => match err {
                 DATError::ContentOverflow(_) => Ok(()),
                 _ => Err(format!("Incorrect error: {}", err)),
-            }
+            },
         }
     }
 
@@ -1119,7 +1183,7 @@ mod tests {
         let mut buf = [0u8; 1];
         match dat_file.read(&mut buf) {
             Ok(_) => Ok(assert_eq!(buf, TEST_CONTENTS[0..1])),
-            Err(err) => Err(format!("Read error: {}", err))
+            Err(err) => Err(format!("Read error: {}", err)),
         }
     }
 
@@ -1132,7 +1196,7 @@ mod tests {
         let mut buf = [0u8; 1];
         match dat_file.read(&mut buf) {
             Ok(_) => Ok(assert_eq!(buf, TEST_MACRO_CONTENTS[0..1])),
-            Err(err) => Err(format!("Read error: {}", err))
+            Err(err) => Err(format!("Read error: {}", err)),
         }
     }
 
@@ -1149,8 +1213,8 @@ mod tests {
                 // Bytes past content end should be untouched.
                 assert_eq!(buf[5..], [1u8; 3]);
                 Ok(())
-            },
-            Err(err) => Err(format!("Read error: {}", err))
+            }
+            Err(err) => Err(format!("Read error: {}", err)),
         }
     }
 
@@ -1162,8 +1226,11 @@ mod tests {
         };
         match dat_file.seek(SeekFrom::Current(1)) {
             // Seek should be 1 byte into content
-            Ok(_) => Ok(assert_eq!(dat_file.raw_file.stream_position().unwrap(), HEADER_SIZE as u64 + 1)),
-            Err(err) => Err(format!("Seek error: {}", err))
+            Ok(_) => Ok(assert_eq!(
+                dat_file.raw_file.stream_position().unwrap(),
+                HEADER_SIZE as u64 + 1
+            )),
+            Err(err) => Err(format!("Seek error: {}", err)),
         }
     }
 
@@ -1175,8 +1242,11 @@ mod tests {
         };
         match dat_file.seek(SeekFrom::Start(1)) {
             // Seek should be 1 byte into content
-            Ok(_) => Ok(assert_eq!(dat_file.raw_file.stream_position().unwrap(), HEADER_SIZE as u64 + 1)),
-            Err(err) => Err(format!("Seek error: {}", err))
+            Ok(_) => Ok(assert_eq!(
+                dat_file.raw_file.stream_position().unwrap(),
+                HEADER_SIZE as u64 + 1
+            )),
+            Err(err) => Err(format!("Seek error: {}", err)),
         }
     }
 
@@ -1188,8 +1258,11 @@ mod tests {
         };
         match dat_file.seek(SeekFrom::End(-1)) {
             // Seek should be 1 byte from content (end measured without including the terminating null byte)
-            Ok(_) => Ok(assert_eq!(dat_file.raw_file.stream_position().unwrap(), HEADER_SIZE as u64 + dat_file.content_size() as u64 - 2)),
-            Err(err) => Err(format!("Seek error: {}", err))
+            Ok(_) => Ok(assert_eq!(
+                dat_file.raw_file.stream_position().unwrap(),
+                HEADER_SIZE as u64 + dat_file.content_size() as u64 - 2
+            )),
+            Err(err) => Err(format!("Seek error: {}", err)),
         }
     }
 
@@ -1204,7 +1277,7 @@ mod tests {
             Err(err) => match err.kind() {
                 std::io::ErrorKind::InvalidInput => Ok(()),
                 _ => Err(format!("Incorrect error: {}", err)),
-            }
+            },
         }
     }
 
@@ -1277,11 +1350,11 @@ mod tests {
         }
         // Check content
         match read_content(&tmp_path) {
-            Ok(content_bytes) => { 
+            Ok(content_bytes) => {
                 assert_eq!(&content_bytes, new_content);
                 assert_eq!(dat_file.content_size(), new_content.len() as u32 + 1);
                 Ok(())
-            },
+            }
             Err(err) => Err(format!("Error reading file after write: {}", err)),
         }
     }
@@ -1312,7 +1385,7 @@ mod tests {
             Err(err) => match err.kind() {
                 std::io::ErrorKind::InvalidInput => Ok(()),
                 _ => Err(format!("Incorrect error: {}", err)),
-            }
+            },
         }
     }
 }

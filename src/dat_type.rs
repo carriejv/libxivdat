@@ -68,9 +68,11 @@ impl From<u32> for DATType {
 ///
 /// # Examples
 /// ```rust
-/// let (type, _, _, _) = dat_file::get_header_contents(&mut header_bytes);
-/// let mask = dat_file::get_mask_for_type(type);
-/// for byte in content_bytes.iter_mut() {
+/// use libxivdat::dat_type::{DATType, get_mask_for_type};
+/// 
+/// let mask = get_mask_for_type(&DATType::Macro).unwrap();
+/// # let mut raw_macro_bytes = [0u8; 1];
+/// for byte in raw_macro_bytes.iter_mut() {
 ///    *byte = *byte ^ mask;
 /// }
 /// ```
@@ -95,9 +97,8 @@ pub fn get_mask_for_type(file_type: &DATType) -> Option<u8> {
 ///
 /// # Examples
 /// ```rust
-/// if let Some(end_byte) = get_default_end_byte_for_type(DATType::Macro) {
-///     DATFile::create_unsafe("NEW_MACRO.DAT", DATType::Macro, 0, 286720, end_byte)?;
-/// }
+/// use libxivdat::dat_type::{DATType, get_default_end_byte_for_type};
+/// let end_byte = get_default_end_byte_for_type(&DATType::Macro);
 /// ```
 pub fn get_default_end_byte_for_type(file_type: &DATType) -> Option<u8> {
     match file_type {
@@ -120,9 +121,8 @@ pub fn get_default_end_byte_for_type(file_type: &DATType) -> Option<u8> {
 ///
 /// # Examples
 /// ```rust
-/// if let Some(max_size) = get_default_max_size_for_type(DATType::Macro) {
-///     DATFile::create_unsafe("NEW_MACRO.DAT", DATType::Macro, 0, max_size, 0xFF)?;
-/// }
+/// use libxivdat::dat_type::{DATType, get_default_max_size_for_type};
+/// let max_size = get_default_max_size_for_type(&DATType::Macro).unwrap();
 /// ```
 pub fn get_default_max_size_for_type(file_type: &DATType) -> Option<u32> {
     match file_type {
