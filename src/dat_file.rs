@@ -591,11 +591,11 @@ impl DATFile {
 /// |-+-++-+-|  |-+-++-+-|  |-+-++-+-|  |-+-++-+-|  |
 /// |           |           |           |           \_ u8 header_end_byte
 /// |           |           |           |              0xFF for all ^0x73 files, unique static values for ^0x31
-/// |           |           |           \_ null 
+/// |           |           |           \_ null
 /// |           |           |              reserved?
-/// |           |           \_ u32le content_size 
+/// |           |           \_ u32le content_size
 /// |           |              (includes terminating null byte)
-/// |           \_ u32le max_size 
+/// |           \_ u32le max_size
 /// |              max content_size allowed; size on disk - 32 -> 17 byte header + minimum 15-byte null pad footer
 /// \_ u32le file_type
 ///    constant value(s) per file type; probably actually 2 distinct bytes -> always <byte null byte null>
@@ -696,19 +696,23 @@ mod tests {
     extern crate tempfile;
     use tempfile::tempdir;
 
-    use std::fs::copy;
     use super::*;
+    use std::fs::copy;
     const TEST_PATH: &str = "./resources/TEST.DAT";
     const TEST_MACRO_PATH: &str = "./resources/TEST_MACRO.DAT";
     const TEST_CONTENTS: &[u8; 5] = b"Boop!";
     const TEST_MACRO_CONTENTS: &[u8; 6] = b"Macro!";
 
+    // --- Module Functions
+
     #[test]
     fn test_get_header_contents() -> Result<(), String> {
-        let header_bytes = [0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF];
+        let header_bytes = [
+            0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF,
+        ];
         let (dat_type, max_size, content_size, end_byte) = match get_header_contents(&header_bytes) {
             Ok(res) => (res.0, res.1, res.2, res.3),
-            Err(err) => return Err(format!("{}", err))
+            Err(err) => return Err(format!("{}", err)),
         };
         assert_eq!(dat_type, DATType::Unknown);
         assert_eq!(max_size, 2);
@@ -719,49 +723,45 @@ mod tests {
 
     #[test]
     fn test_get_header_contents_error_bad_type() -> Result<(), String> {
-        let header_bytes = [0x00, 0x01, 0x00, 0x01, 0x02, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF];
-        let _ = match get_header_contents(&header_bytes) {
-            Ok(_) => return Err("No error returned.".to_owned()),
+        let header_bytes = [
+            0x00, 0x01, 0x00, 0x01, 0x02, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF,
+        ];
+        match get_header_contents(&header_bytes) {
+            Ok(_) => Err("No error returned.".to_owned()),
             Err(err) => match err {
-                DATError::BadHeader(_) =>  return Ok(()),
-                _ => return Err(format!("Incorrect error: {}", err))
-            }
-        };
+                DATError::BadHeader(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+        }
     }
 
     #[test]
     fn test_get_header_contents_error_sizes() -> Result<(), String> {
-        let header_bytes = [0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF];
-        let _ = match get_header_contents(&header_bytes) {
-            Ok(_) => return Err("No error returned.".to_owned()),
+        let header_bytes = [
+            0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF,
+        ];
+        match get_header_contents(&header_bytes) {
+            Ok(_) => Err("No error returned.".to_owned()),
             Err(err) => match err {
-                DATError::BadHeader(_) =>  return Ok(()),
-                _ => return Err(format!("Incorrect error: {}", err))
-            }
-        };
+                DATError::BadHeader(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+        }
     }
 
     #[test]
     fn test_read_content() -> Result<(), String> {
         match read_content(TEST_PATH) {
-            Ok(content_bytes) => {
-                Ok(assert_eq!(&content_bytes, TEST_CONTENTS))
-            },
-            Err(err) => {
-                Err(format!("Read error: {}", err))
-            }
+            Ok(content_bytes) => Ok(assert_eq!(&content_bytes, TEST_CONTENTS)),
+            Err(err) => Err(format!("Read error: {}", err)),
         }
     }
 
     #[test]
     fn test_read_content_with_mask() -> Result<(), String> {
         match read_content(TEST_MACRO_PATH) {
-            Ok(content_bytes) => {
-                Ok(assert_eq!(&content_bytes, TEST_MACRO_CONTENTS))
-            },
-            Err(err) => {
-                Err(format!("Read error: {}", err))
-            }
+            Ok(content_bytes) => Ok(assert_eq!(&content_bytes, TEST_MACRO_CONTENTS)),
+            Err(err) => Err(format!("Read error: {}", err)),
         }
     }
 
@@ -770,27 +770,39 @@ mod tests {
         // Make a tempfile
         let tmp_dir = match tempdir() {
             Ok(tmp_dir) => tmp_dir,
-            Err(err) => return Err(format!("Error creating temp dir: {}", err))
+            Err(err) => return Err(format!("Error creating temp dir: {}", err)),
         };
         let tmp_path = tmp_dir.path().join("TEST.DAT");
         match copy(TEST_PATH, &tmp_path) {
             Ok(_) => (),
-            Err(err) => return Err(format!("Could not create temp file for testing: {}", err))
+            Err(err) => return Err(format!("Could not create temp file for testing: {}", err)),
         };
         // Write content
         let new_content = b"Hi!";
         match write_content(&tmp_path, new_content) {
             Ok(_) => (),
-            Err(err) => return Err(format!("Error writing content: {}", err))
+            Err(err) => return Err(format!("Error writing content: {}", err)),
         };
         // Check content
         match read_content(&tmp_path) {
-            Ok(content_bytes) => {
-                Ok(assert_eq!(&content_bytes, new_content))
-            },
-            Err(err) => {
-                Err(format!("Content not written correctly: {}", err))
+            Ok(content_bytes) => Ok(assert_eq!(&content_bytes, new_content)),
+            Err(err) => Err(format!("Content not written correctly: {}", err)),
+        }
+    }
+
+    // --- DATFile
+
+    #[test]
+    fn test_datfile_open() -> Result<(), String> {
+        match DATFile::open(TEST_PATH) {
+            Ok(mut dat_file) => {
+                assert_eq!(dat_file.content_size(), 6);
+                assert_eq!(dat_file.max_size, 7);
+                assert_eq!(dat_file.header_end_byte(), 0xFF);
+                assert_eq!(dat_file.file_type(), DATType::Unknown);
+                Ok(())
             }
+            Err(err) => Err(format!("{}", err)),
         }
     }
 }

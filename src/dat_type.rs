@@ -84,6 +84,7 @@ pub fn get_mask_for_type(file_type: &DATType) -> Option<u8> {
         | DATType::Macro
         | DATType::RecentTells => Some(0x73),
         DATType::Hotbar | DATType::UISave => Some(0x31),
+        DATType::LogFilter => Some(0x00),
         _ => None,
     }
 }
@@ -108,6 +109,7 @@ pub fn get_default_end_byte_for_type(file_type: &DATType) -> Option<u8> {
         | DATType::Macro
         | DATType::RecentTells => Some(0xFF),
         DATType::Hotbar => Some(0x31),
+        DATType::LogFilter => Some(0x00),
         DATType::UISave => Some(0x21),
         _ => None,
     }
@@ -130,9 +132,80 @@ pub fn get_default_max_size_for_type(file_type: &DATType) -> Option<u32> {
         DATType::ItemFinder => Some(14030),
         DATType::ItemOrder => Some(15193),
         DATType::Keybind => Some(20480),
+        DATType::LogFilter => Some(2048),
         DATType::Macro => Some(286720),
         DATType::RecentTells => Some(2048),
         DATType::UISave => Some(64512),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::File;
+    use std::io::Read;
+
+    const FILE_TYPE_MAP: [(DATType, &str); 9] = [
+        (DATType::ACQ, "./resources/default_dats/ACQ.DAT"),
+        (DATType::GEARSET, "./resources/default_dats/GEARSET.DAT"),
+        (DATType::GS, "./resources/default_dats/GS.DAT"),
+        (DATType::ITEMFDR, "./resources/default_dats/ITEMFDR.DAT"),
+        (DATType::ITEMODR, "./resources/default_dats/ITEMODR.DAT"),
+        (DATType::KEYBIND, "./resources/default_dats/KEYBIND.DAT"),
+        (DATType::LOGFLTR, "./resources/default_dats/LOGFLTR.DAT"),
+        (DATType::MACRO, "./resources/default_dats/MACRO.DAT"),
+        (DATType::UISAVE, "./resources/default_dats/UISAVE.DAT"),
+    ];
+
+    #[test]
+    fn test_from_header_bytes() -> Result<(), String> {
+        for case in FILE_TYPE_MAP.iter() {
+            let mut file = match File::open(case.1) {
+                Ok(file) => file,
+                Err(err) => return Err(format!("Error opening file: {}", err)),
+            };
+            let mut buf = [0u8; 4];
+            match file.read(&mut buf) {
+                Ok(_) => (),
+                Err(err) => return Err(format!("Error reading file: {}", err)),
+            };
+            let id_bytes = u32::from_le_bytes(buf);
+            assert_eq!(DATType::from(id_bytes), case.0);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_default_end_byte_for_type() -> Result<(), String> {
+        for case in FILE_TYPE_MAP.iter() {
+            match get_default_end_byte_for_type(&case.0) {
+                Some(_) => (),
+                None => return Err(format!("No value returned for case {}.", case.1)),
+            };
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_default_max_size_for_type() -> Result<(), String> {
+        for case in FILE_TYPE_MAP.iter() {
+            match get_default_max_size_for_type(&case.0) {
+                Some(_) => (),
+                None => return Err(format!("No value returned for case {}.", case.1)),
+            };
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_mask_for_type() -> Result<(), String> {
+        for case in FILE_TYPE_MAP.iter() {
+            match get_mask_for_type(&case.0) {
+                Some(_) => (),
+                None => return Err(format!("No value returned for case {}.", case.1)),
+            };
+        }
+        Ok(())
     }
 }
