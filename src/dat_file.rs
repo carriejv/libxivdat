@@ -218,7 +218,7 @@ impl DATFile {
     pub fn create<P: AsRef<Path>>(path: P, dat_type: DATType) -> Result<Self, DATError> {
         let max_size = get_default_max_size_for_type(&dat_type).unwrap_or(0);
         let end_byte = get_default_end_byte_for_type(&dat_type).unwrap_or(0);
-        Self::create_unsafe(path, dat_type, 0, max_size, end_byte)
+        Self::create_unsafe(path, dat_type, 1, max_size, end_byte)
     }
 
     /// Creates a new DAT file with a null-padded content bock of the specifed size in read/write mode.
@@ -269,7 +269,8 @@ impl DATFile {
     /// This will truncate an existing file if one exists at the specified path.
     ///
     /// This is shorthand for creating the DAT file, then calling
-    /// [`write()`](Self::write()).
+    /// [`write()`](Self::write()). This function also resets the cursor to
+    /// the beginning of the content block after writing.
     ///
     /// By default, this will use the default max size for the specified type from
     /// [`get_default_max_size_for_type()`](crate::dat_type::get_default_max_size_for_type()) and
@@ -293,8 +294,9 @@ impl DATFile {
     pub fn create_with_content<P: AsRef<Path>>(path: P, dat_type: DATType, content: &[u8]) -> Result<Self, DATError> {
         let max_size = get_default_max_size_for_type(&dat_type).unwrap_or(0);
         let end_byte = get_default_end_byte_for_type(&dat_type).unwrap_or(0);
-        let mut dat_file = Self::create_unsafe(path, dat_type, 0, max_size, end_byte)?;
+        let mut dat_file = Self::create_unsafe(path, dat_type, 1, max_size, end_byte)?;
         dat_file.write(&content)?;
+        dat_file.seek(SeekFrom::Start(0))?;
         Ok(dat_file)
     }
 
@@ -437,6 +439,9 @@ impl DATFile {
             return Ok(());
         }
         // Check for valid size
+        if new_size == 0 {
+            return Err(DATError::InvalidInput("Content size must be > 0."));
+        }
         if new_size > self.max_size {
             return Err(DATError::ContentOverflow("Content size would exceed maximum size."));
         }
@@ -501,6 +506,9 @@ impl DATFile {
         // Quick noop for no change
         if new_size == self.max_size {
             return Ok(());
+        }
+        if new_size == 0 {
+            return Err(DATError::InvalidInput("Content size must be > 0."));
         }
         // Check for valid size
         if new_size < self.content_size {
@@ -803,6 +811,303 @@ mod tests {
                 Ok(())
             }
             Err(err) => Err(format!("{}", err)),
+        }
+    }
+
+    #[test]
+    fn test_datfile_open_detect_type() -> Result<(), String> {
+        match DATFile::open(TEST_MACRO_PATH) {
+            Ok(mut dat_file) => {
+                assert_eq!(dat_file.content_size(), 7);
+                assert_eq!(dat_file.max_size, 8);
+                assert_eq!(dat_file.header_end_byte(), 0xFF);
+                assert_eq!(dat_file.file_type(), DATType::Macro);
+                Ok(())
+            }
+            Err(err) => Err(format!("{}", err)),
+        }
+    }
+
+    #[test]
+    fn test_datfile_open_options() -> Result<(), String> {
+        let mut opts = std::fs::OpenOptions::new();
+        opts.read(true).write(true);
+        match DATFile::open_options(TEST_PATH, &mut opts) {
+            Ok(mut dat_file) => {
+                assert_eq!(dat_file.content_size(), 6);
+                assert_eq!(dat_file.max_size, 7);
+                assert_eq!(dat_file.header_end_byte(), 0xFF);
+                assert_eq!(dat_file.file_type(), DATType::Unknown);
+                Ok(())
+            }
+            Err(err) => Err(format!("{}", err)),
+        }
+    }
+
+    #[test]
+    fn test_datfile_create() -> Result<(), String> {
+        let tmp_dir = match tempdir() {
+            Ok(tmp_dir) => tmp_dir,
+            Err(err) => return Err(format!("Error creating temp dir: {}", err)),
+        };
+        let tmp_path = tmp_dir.path().join("TEST.DAT");
+        match DATFile::create(&tmp_path, DATType::Macro) {
+            Ok(mut dat_file) => {
+                assert_eq!(dat_file.content_size(), 1);
+                assert_eq!(
+                    dat_file.max_size,
+                    get_default_max_size_for_type(&DATType::Macro).unwrap()
+                );
+                assert_eq!(
+                    dat_file.header_end_byte(),
+                    get_default_end_byte_for_type(&DATType::Macro).unwrap()
+                );
+                assert_eq!(dat_file.file_type(), DATType::Macro);
+                Ok(())
+            }
+            Err(err) => Err(format!("{}", err)),
+        }
+    }
+
+    #[test]
+    fn test_datfile_create_with_content() -> Result<(), String> {
+        let tmp_dir = match tempdir() {
+            Ok(tmp_dir) => tmp_dir,
+            Err(err) => return Err(format!("Error creating temp dir: {}", err)),
+        };
+        let tmp_path = tmp_dir.path().join("TEST.DAT");
+        let content = b"Content!";
+        match DATFile::create_with_content(&tmp_path, DATType::Macro, content) {
+            Ok(mut dat_file) => {
+                assert_eq!(dat_file.content_size(), content.len() as u32 + 1);
+                assert_eq!(
+                    dat_file.max_size,
+                    get_default_max_size_for_type(&DATType::Macro).unwrap()
+                );
+                assert_eq!(
+                    dat_file.header_end_byte(),
+                    get_default_end_byte_for_type(&DATType::Macro).unwrap()
+                );
+                assert_eq!(dat_file.file_type(), DATType::Macro);
+
+                let mut buf = [0u8; 8];
+                match dat_file.read(&mut buf) {
+                    Ok(_) => (),
+                    Err(err) => return Err(format!("Could not read back content: {}", err)),
+                }
+                assert_eq!(&buf, content);
+
+                Ok(())
+            }
+            Err(err) => Err(format!("{}", err)),
+        }
+    }
+
+    #[test]
+    fn test_datfile_create_unsafe() -> Result<(), String> {
+        let tmp_dir = match tempdir() {
+            Ok(tmp_dir) => tmp_dir,
+            Err(err) => return Err(format!("Error creating temp dir: {}", err)),
+        };
+        let tmp_path = tmp_dir.path().join("TEST.DAT");
+        match DATFile::create_unsafe(&tmp_path, DATType::Macro, 256, 512, 0) {
+            Ok(mut dat_file) => {
+                assert_eq!(dat_file.content_size(), 256);
+                assert_eq!(dat_file.max_size, 512);
+                assert_eq!(dat_file.header_end_byte(), 0);
+                assert_eq!(dat_file.file_type(), DATType::Macro);
+                Ok(())
+            }
+            Err(err) => Err(format!("{}", err)),
+        }
+    }
+
+    #[test]
+    fn test_datfile_set_content_size_grow() -> Result<(), String> {
+        let tmp_dir = match tempdir() {
+            Ok(tmp_dir) => tmp_dir,
+            Err(err) => return Err(format!("Error creating temp dir: {}", err)),
+        };
+        let tmp_path = tmp_dir.path().join("TEST.DAT");
+        let mut dat_file = match DATFile::create_with_content(&tmp_path, DATType::Macro, &[34u8; 8]) {
+            Ok(dat_file) => dat_file,
+            Err(err) => return Err(format!("Error creating temp file: {}", err)),
+        };
+        match dat_file.set_content_size(17) {
+            Ok(_) => {
+                assert_eq!(dat_file.content_size(), 17);
+                // New content space should be mask^null padded on disk.
+                // This is output as null bytes via `read()`, which automatically applies masks.
+                let mut buf = [0u8; 16];
+                match dat_file.read(&mut buf) {
+                    Ok(_) => (),
+                    Err(err) => return Err(format!("Could not read back content: {}", err)),
+                }
+                assert_eq!(&buf[..8], &[34u8; 8]);
+                assert_eq!(&buf[8..], &[0u8; 8]);
+                Ok(())
+            },
+            Err(err) => return Err(format!("Error setting content size: {}", err))
+        }
+    }
+
+    #[test]
+    fn test_datfile_set_content_size_shrink() -> Result<(), String> {
+        let tmp_dir = match tempdir() {
+            Ok(tmp_dir) => tmp_dir,
+            Err(err) => return Err(format!("Error creating temp dir: {}", err)),
+        };
+        let tmp_path = tmp_dir.path().join("TEST.DAT");
+        let mut dat_file = match DATFile::create_with_content(&tmp_path, DATType::Macro, &[34u8; 8]) {
+            Ok(dat_file) => dat_file,
+            Err(err) => return Err(format!("Error creating temp file: {}", err)),
+        };
+        match dat_file.set_content_size(5) {
+            Ok(_) => {
+                assert_eq!(dat_file.content_size(), 5);
+                // Byte 4 should be treated as EOF; the rest of the buffer should remain untouched.
+                let mut buf = [1u8; 8];
+                match dat_file.read(&mut buf) {
+                    Ok(_) => (),
+                    Err(err) => return Err(format!("Could not read back content: {}", err)),
+                }
+                assert_eq!(&buf[..4], &[34u8; 4]);
+                assert_eq!(&buf[4..], &[1u8; 4]);
+                Ok(())
+            },
+            Err(err) => return Err(format!("Error setting content size: {}", err))
+        }
+    }
+
+    #[test]
+    fn test_datfile_set_content_size_error_zero_size() -> Result<(), String> {
+        let tmp_dir = match tempdir() {
+            Ok(tmp_dir) => tmp_dir,
+            Err(err) => return Err(format!("Error creating temp dir: {}", err)),
+        };
+        let tmp_path = tmp_dir.path().join("TEST.DAT");
+        let mut dat_file = match DATFile::create_with_content(&tmp_path, DATType::Macro, &[34u8; 8]) {
+            Ok(dat_file) => dat_file,
+            Err(err) => return Err(format!("Error creating temp file: {}", err)),
+        };
+        match dat_file.set_content_size(0) {
+            Ok(_) => Err("No error returned.".to_owned()),
+            Err(err) => match err {
+                DATError::InvalidInput(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            }
+        }
+    }
+
+    #[test]
+    fn test_datfile_set_content_size_error_over_max() -> Result<(), String> {
+        let tmp_dir = match tempdir() {
+            Ok(tmp_dir) => tmp_dir,
+            Err(err) => return Err(format!("Error creating temp dir: {}", err)),
+        };
+        let tmp_path = tmp_dir.path().join("TEST.DAT");
+        let mut dat_file = match DATFile::create_unsafe(&tmp_path, DATType::Unknown, 1, 4, 0) {
+            Ok(dat_file) => dat_file,
+            Err(err) => return Err(format!("Error creating temp file: {}", err)),
+        };
+        match dat_file.set_content_size(8) {
+            Ok(_) => Err("No error returned.".to_owned()),
+            Err(err) => match err {
+                DATError::ContentOverflow(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            }
+        }
+    }
+
+    #[test]
+    fn test_datfile_set_max_size_grow() -> Result<(), String> {
+        let tmp_dir = match tempdir() {
+            Ok(tmp_dir) => tmp_dir,
+            Err(err) => return Err(format!("Error creating temp dir: {}", err)),
+        };
+        let tmp_path = tmp_dir.path().join("TEST.DAT");
+        let mut dat_file = match DATFile::create_unsafe(&tmp_path, DATType::Macro, 4, 8, 0) {
+            Ok(dat_file) => dat_file,
+            Err(err) => return Err(format!("Error creating temp file: {}", err)),
+        };
+        match dat_file.set_max_size(16) {
+            Ok(_) => {
+                assert_eq!(dat_file.max_size(), 16);
+                // File size on disk should equal max size + MAX_SIZE_OFFSET.
+                let meta = match dat_file.metadata() {
+                    Ok(meta) => meta,
+                    Err(err) => return Err(format!("Could not read back content: {}", err)),
+                };
+                assert_eq!(meta.len(), 16 + MAX_SIZE_OFFSET as u64);
+                Ok(())
+            },
+            Err(err) => return Err(format!("Error setting content size: {}", err))
+        }
+    }
+
+    #[test]
+    fn test_datfile_set_max_size_shrink() -> Result<(), String> {
+        let tmp_dir = match tempdir() {
+            Ok(tmp_dir) => tmp_dir,
+            Err(err) => return Err(format!("Error creating temp dir: {}", err)),
+        };
+        let tmp_path = tmp_dir.path().join("TEST.DAT");
+        let mut dat_file = match DATFile::create_unsafe(&tmp_path, DATType::Macro, 4, 8, 0) {
+            Ok(dat_file) => dat_file,
+            Err(err) => return Err(format!("Error creating temp file: {}", err)),
+        };
+        match dat_file.set_max_size(6) {
+            Ok(_) => {
+                assert_eq!(dat_file.max_size(), 6);
+                // File size on disk should equal max size + MAX_SIZE_OFFSET.
+                let meta = match dat_file.metadata() {
+                    Ok(meta) => meta,
+                    Err(err) => return Err(format!("Could not read back content: {}", err)),
+                };
+                assert_eq!(meta.len(), 6 + MAX_SIZE_OFFSET as u64);
+                Ok(())
+            },
+            Err(err) => return Err(format!("Error setting content size: {}", err))
+        }
+    }
+
+    #[test]
+    fn test_datfile_set_max_size_error_zero_size() -> Result<(), String> {
+        let tmp_dir = match tempdir() {
+            Ok(tmp_dir) => tmp_dir,
+            Err(err) => return Err(format!("Error creating temp dir: {}", err)),
+        };
+        let tmp_path = tmp_dir.path().join("TEST.DAT");
+        let mut dat_file = match DATFile::create_unsafe(&tmp_path, DATType::Macro, 4, 8, 0) {
+            Ok(dat_file) => dat_file,
+            Err(err) => return Err(format!("Error creating temp file: {}", err)),
+        };
+        match dat_file.set_max_size(0) {
+            Ok(_) => Err("No error returned.".to_owned()),
+            Err(err) => match err {
+                DATError::InvalidInput(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            }
+        }
+    }
+
+    #[test]
+    fn test_datfile_set_max_size_error_under_content() -> Result<(), String> {
+        let tmp_dir = match tempdir() {
+            Ok(tmp_dir) => tmp_dir,
+            Err(err) => return Err(format!("Error creating temp dir: {}", err)),
+        };
+        let tmp_path = tmp_dir.path().join("TEST.DAT");
+        let mut dat_file = match DATFile::create_unsafe(&tmp_path, DATType::Unknown, 4, 8, 0) {
+            Ok(dat_file) => dat_file,
+            Err(err) => return Err(format!("Error creating temp file: {}", err)),
+        };
+        match dat_file.set_max_size(2) {
+            Ok(_) => Err("No error returned.".to_owned()),
+            Err(err) => match err {
+                DATError::ContentOverflow(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            }
         }
     }
 }

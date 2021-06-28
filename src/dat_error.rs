@@ -19,6 +19,8 @@ pub enum DATError {
     FileIO(io::Error),
     /// Attempted to use a type-specific function on the incorrect [`DATType`](crate::dat_type::DATType)
     IncorrectType(&'static str),
+    /// Invalid input for a function
+    InvalidInput(&'static str),
 }
 
 impl fmt::Display for DATError {
@@ -28,6 +30,7 @@ impl fmt::Display for DATError {
             DATError::ContentOverflow(desc) => write!(f, "Content overflow: {}", desc),
             DATError::FileIO(e) => write!(f, "File IO error: {:?}", e.source()),
             DATError::IncorrectType(desc) => write!(f, "Incorrect DAT file type: {}", desc),
+            DATError::InvalidInput(desc) => write!(f, "Invalid input: {}", desc),
         }
     }
 }
