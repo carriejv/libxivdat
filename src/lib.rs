@@ -1,11 +1,11 @@
 // Copyright 2021 Carrie J Vrtis
-// 
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
-// 
+//
 // http://www.apache.org/licenses/LICENSE-2.0
-// 
+//
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -14,28 +14,28 @@
 
 //! A Rust library for working with Final Fantasy XIV .DAT files.
 //! These files store client-side game config including macros, hotkeys, and ui settings.
-//! 
+//!
 //! Libxivdat currently provides only low-level access via [`DATFile`](crate::dat_file::DATFile),
 //! a [`std::fs::File`]-like interface that automatically manages the header, footer, and content
 //! masking of DAT files.
-//! 
+//!
 //! Each DAT file contains unique data structures. Higher-level modules for individual DAT files
 //! are planned for reading/writing entire resources (ie, macros or gearsets) but are not yet
 //! implemented.
-//! 
+//!
 //! # DAT Data Structures
-//! 
-//! Internally, some DAT file content blocks use a variable-length data structure referred to as a `Section` 
-//! in this library. A Section consists of a single UTF-8 char type tag, u8 size, and a null-terminated 
+//!
+//! Internally, some DAT file content blocks use a variable-length data structure referred to as a `Section`
+//! in this library. A Section consists of a single UTF-8 char type tag, u8 size, and a null-terminated
 //! UTF-8 string. A single resource (ie, a macro) is then comprised of a repeating pattern of Sections.
 //! Other DAT files use fixed-size resource blocks, with each resource immediately following the last.
 //! These are referred to as "Block DATs" below.
-//! 
+//!
 //! Some DAT files contain unique binary data that does not follow the "standard" DAT format. Others contain
 //! UTF-8 plaintext and are not binary files at all. Support for these files is not currently planned.
-//! 
+//!
 //! ## DAT Support Table
-//! 
+//!
 //! | File               | Contains                         | Data Type  | DATFile Read/Write | High Level Module |
 //! |--------------------|----------------------------------|------------|--------------------|-------------------|
 //! | ACQ.DAT            | Recent /tell history             | Section    |         ✅         |         ❌        |
@@ -54,21 +54,21 @@
 //! | MACRO.DAT          | Character-specific macros        | Section    |         ✅         |         ❌        |
 //! | MACROSYS.DAT       | System-wide macros               | Section    |         ✅         |         ❌        |
 //! | UISAVE.DAT         | UI config                        | Block      |         ✅         |         ❌        |
-//! 
+//!
 //! # Examples:
-//! 
+//!
 //! ## Reading a file:
-//! 
+//!
 //! ```rust
 //! use libxivdat::dat_file::read_content;
 //! # let path_to_dat_file = "./resources/TEST.DAT";
 //! let data_vec = read_content(&path_to_dat_file).unwrap();
 //! ```
-//! 
+//!
 //! ## Writing to an existing file:
 //! DAT files contain metadata in the header that pertains to how data should be written.
 //! Because of this, creating a new DAT file and writing contents are separate steps.
-//! 
+//!
 //! ```rust
 //! use libxivdat::dat_file::write_content;
 //! # use libxivdat::dat_file::DATFile;
@@ -80,9 +80,9 @@
 //! # DATFile::create(&path_to_dat_file, DATType::Macro).unwrap();
 //! let data_vec = write_content(&path_to_dat_file, b"This is some data.").unwrap();
 //! ```
-//! 
+//!
 //! ## Creating a new file:
-//! 
+//!
 //! ```rust
 //! use libxivdat::dat_file::DATFile;
 //! use libxivdat::dat_type::DATType;
@@ -92,9 +92,9 @@
 //! # let path_to_dat_file = temp_dir.path().join("TEST.DAT");
 //! DATFile::create_with_content(&path_to_dat_file, DATType::Macro, b"This is some data.").unwrap();
 //! ```
-//! 
+//!
 //! ## File-like access:
-//! 
+//!
 //! ```rust
 //! use libxivdat::dat_file::read_content;
 //! use libxivdat::dat_file::DATFile;
@@ -105,13 +105,12 @@
 //! # let temp_dir = tempdir().unwrap();
 //! # let path_to_dat_file = temp_dir.path().join("TEST.DAT");
 //! # DATFile::create(&path_to_dat_file, DATType::Macro).unwrap();
-//! 
+//!
 //! let mut dat_file = DATFile::open(&path_to_dat_file).unwrap();
-//! 
+//!
 //! let mut first_256_bytes = [0u8; 256];
 //! dat_file.read(&mut first_256_bytes).unwrap();
 //! ```
-
 
 /// Contains the [`DATError`](crate::dat_error::DATError) wrapper error. This error type is used
 /// for all functions that do not implement a `std::io` trait.

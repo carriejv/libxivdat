@@ -69,7 +69,7 @@ impl From<u32> for DATType {
 /// # Examples
 /// ```rust
 /// use libxivdat::dat_type::{DATType, get_mask_for_type};
-/// 
+///
 /// let mask = get_mask_for_type(&DATType::Macro).unwrap();
 /// # let mut raw_macro_bytes = [0u8; 1];
 /// for byte in raw_macro_bytes.iter_mut() {

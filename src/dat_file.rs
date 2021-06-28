@@ -19,7 +19,7 @@ const INDEX_MAX_SIZE: usize = 0x04;
 /// Index of the `content_size` header record.
 const INDEX_CONTENT_SIZE: usize = 0x08;
 
-/// A reference to an open DAT file on the system. This emulates the standard lib 
+/// A reference to an open DAT file on the system. This emulates the standard lib
 /// [`std::fs::File`] but provides additional DAT-specific functionality.
 ///
 /// Reads and writes to DAT files are performed only on the data contents of the file.
@@ -35,7 +35,7 @@ const INDEX_CONTENT_SIZE: usize = 0x08;
 ///     Ok(dat_file) => dat_file,
 ///     Err(_) => panic!("Something broke!")
 /// };
-/// 
+///
 /// match dat_file.file_type() {
 ///     DATType::Macro => {
 ///         let mut macro_bytes = vec![0u8; dat_file.content_size() as usize - 1];
@@ -172,7 +172,7 @@ impl Write for DATFile {
                 let mut masked_bytes = vec![0u8; buf.len()];
                 masked_bytes.copy_from_slice(buf);
                 for byte in masked_bytes.iter_mut() {
-                    *byte ^=  mask_val;
+                    *byte ^= mask_val;
                 }
                 Ok(self.raw_file.write(&masked_bytes)?)
             }
@@ -194,7 +194,7 @@ impl DATFile {
     ///
     /// ```rust
     /// use libxivdat::dat_file::DATFile;
-    /// 
+    ///
     /// let mut dat_file = DATFile::open("./resources/TEST.DAT").unwrap();
     /// let content_size = dat_file.content_size();
     /// ```
@@ -225,7 +225,7 @@ impl DATFile {
     /// # use tempfile::tempdir;
     /// # let temp_dir = tempdir().unwrap();
     /// # let path = temp_dir.path().join("TEST.DAT");
-    /// 
+    ///
     /// let mut dat_file = DATFile::create(&path, DATType::Macro);
     /// ```
     pub fn create<P: AsRef<Path>>(path: P, dat_type: DATType) -> Result<Self, DATError> {
@@ -250,12 +250,12 @@ impl DATFile {
     /// ```rust
     /// use libxivdat::dat_file::DATFile;
     /// use libxivdat::dat_type::DATType;
-    /// 
+    ///
     /// # extern crate tempfile;
     /// # use tempfile::tempdir;
     /// # let temp_dir = tempdir().unwrap();
     /// # let path = temp_dir.path().join("TEST.DAT");
-    /// 
+    ///
     /// // Create an empty (content length 1) macro file with a custom max size and end byte. This probably isn't valid.
     /// let mut dat_file = DATFile::create_unsafe(&path, DATType::Macro, 1, 1024, 0x01);
     /// ```
@@ -312,12 +312,12 @@ impl DATFile {
     /// ```rust
     /// use libxivdat::dat_file::DATFile;
     /// use libxivdat::dat_type::DATType;
-    /// 
+    ///
     /// # extern crate tempfile;
     /// # use tempfile::tempdir;
     /// # let temp_dir = tempdir().unwrap();
     /// # let path = temp_dir.path().join("TEST.DAT");
-    /// 
+    ///
     /// let mut dat_file = DATFile::create_with_content(&path, DATType::Macro, b"Not really a macro.");
     /// ```
     pub fn create_with_content<P: AsRef<Path>>(path: P, dat_type: DATType, content: &[u8]) -> Result<Self, DATError> {
@@ -336,7 +336,7 @@ impl DATFile {
     /// ```rust
     /// use libxivdat::dat_file::DATFile;
     /// use libxivdat::dat_type::DATType;
-    /// 
+    ///
     /// let mut dat_file = DATFile::open("./resources/TEST_MACRO.DAT").unwrap();
     /// match dat_file.file_type() {
     ///     DATType::Macro => println!("Macro file!"),
@@ -355,7 +355,7 @@ impl DATFile {
     ///
     /// ```rust
     /// use libxivdat::dat_file::DATFile;
-    /// 
+    ///
     /// let mut dat_file = DATFile::open("./resources/TEST_MACRO.DAT").unwrap();
     /// let header_end_byte = dat_file.header_end_byte();
     /// ```
@@ -371,7 +371,7 @@ impl DATFile {
     ///
     /// ```rust
     /// use libxivdat::dat_file::DATFile;
-    /// 
+    ///
     /// let mut dat_file = DATFile::open("./resources/TEST_MACRO.DAT").unwrap();
     /// let header_end_byte = dat_file.max_size();
     /// ```
@@ -405,7 +405,7 @@ impl DATFile {
     ///
     /// ```rust
     /// use libxivdat::dat_file::DATFile;
-    /// 
+    ///
     /// let mut dat_file = DATFile::open("./resources/TEST.DAT");
     /// ```
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, DATError> {
@@ -418,7 +418,7 @@ impl DATFile {
             file_type,
             header_end_byte,
             max_size,
-            raw_file
+            raw_file,
         })
     }
 
@@ -439,7 +439,7 @@ impl DATFile {
     /// ```rust
     /// use libxivdat::dat_file::DATFile;
     /// use std::fs::OpenOptions;
-    /// 
+    ///
     /// let mut open_opts = OpenOptions::new();
     /// open_opts.read(true).write(true);
     /// let mut dat_file = DATFile::open_options("./resources/TEST.DAT", &mut open_opts);
@@ -631,7 +631,7 @@ impl DATFile {
 /// use libxivdat::dat_file::{get_header_contents, HEADER_SIZE};
 /// use std::fs::File;
 /// use std::io::Read;
-/// 
+///
 /// let mut header_bytes = [0u8; HEADER_SIZE as usize];
 /// let mut file = File::open("./resources/TEST.DAT").unwrap();
 /// file.read(&mut header_bytes).unwrap();
@@ -697,7 +697,7 @@ pub fn get_header_contents(header: &[u8; HEADER_SIZE as usize]) -> Result<(DATTy
 ///
 /// ```rust
 /// use libxivdat::dat_file::read_content;
-/// 
+///
 /// let dat_bytes = read_content("./resources/TEST.DAT").unwrap();
 /// ```
 pub fn read_content<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, DATError> {
@@ -732,13 +732,13 @@ pub fn read_content<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, DATError> {
 /// use libxivdat::dat_file::write_content;
 /// # use libxivdat::dat_file::DATFile;
 /// # use libxivdat::dat_type::DATType;
-/// 
+///
 /// # extern crate tempfile;
 /// # use tempfile::tempdir;
 /// # let temp_dir = tempdir().unwrap();
 /// # let path = temp_dir.path().join("TEST.DAT");
 /// # DATFile::create(&path, DATType::Macro).unwrap();
-/// 
+///
 /// write_content(&path, b"Who's awesome? You're awesome!").unwrap();
 /// ```
 pub fn write_content<P: AsRef<Path>>(path: P, buf: &[u8]) -> Result<usize, DATError> {
