@@ -3,7 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/v/libxivdat.svg)](https://crates.io/crates/libxivdat/)
 [![Doc.rs](https://docs.rs/libxivdat/badge.svg)](https://docs.rs/crate/libxivdat/)
 [![Apache-2.0](https://img.shields.io/github/license/carriejv/libxivdat)](https://github.com/carriejv/libxivdat/blob/master/LICENSE/)
-[![Build Status](https://github.com/carriejv/libxivdat/workflows/ci-build/badge.svg?branch=master)](https://github.com/carriejv/libxivdat/actions?query=workflow%3Aci-build)
+[![Build Status](https://github.com/carriejv/libxivdat/workflows/CIBuild/badge.svg?branch=master)](https://github.com/carriejv/libxivdat/actions?query=workflow%3ACIBuild)
 
 A library for working with Final Fantasy XIV .DAT files. These files store client-side game config including macros, hotkeys, and ui settings.
 
