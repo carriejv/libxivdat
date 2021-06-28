@@ -19,8 +19,8 @@ const INDEX_MAX_SIZE: usize = 0x04;
 /// Index of the `content_size` header record.
 const INDEX_CONTENT_SIZE: usize = 0x08;
 
-/// A reference to an open DAT file on the system. This wraps the native
-/// [`std::fs::File`], providing additional DAT-specific functionality.
+/// A reference to an open DAT file on the system. This emulates the standard lib 
+/// [`std::fs::File`] but provides additional DAT-specific functionality.
 ///
 /// Reads and writes to DAT files are performed only on the data contents of the file.
 /// XOR masks are automatically applied as necessary.
@@ -224,7 +224,6 @@ impl DATFile {
     /// ```rust
     /// use libxivdat::dat_file::DATFile;
     /// use libxivdat::dat_type::DATType;
-    /// 
     /// # extern crate tempfile;
     /// # use tempfile::tempdir;
     /// # let temp_dir = tempdir().unwrap();
@@ -383,7 +382,7 @@ impl DATFile {
         self.max_size
     }
 
-    /// Runs [`metadata()`](std::fs::File::sync_all()) on the underlying [`std::fs::File`].
+    /// Calls [`metadata()`](std::fs::File::sync_all()) on the underlying [`std::fs::File`].
     ///
     /// # Errors
     ///
@@ -564,7 +563,7 @@ impl DATFile {
         Ok(())
     }
 
-    /// Runs [`sync_all()`](std::fs::File::sync_all()) on the underlying [`std::fs::File`].
+    /// Calls [`sync_all()`](std::fs::File::sync_all()) on the underlying [`std::fs::File`].
     ///
     /// # Errors
     ///
@@ -574,7 +573,7 @@ impl DATFile {
         Ok(self.raw_file.sync_all()?)
     }
 
-    /// Runs [`sync_data()`](std::fs::File::sync_data()) on the underlying [`std::fs::File`].
+    /// Calls [`sync_data()`](std::fs::File::sync_data()) on the underlying [`std::fs::File`].
     ///
     /// # Errors
     ///

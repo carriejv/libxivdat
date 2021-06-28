@@ -11,8 +11,8 @@ pub enum DATError {
     /// The header data is incorrect. The file is probably not a binary DAT file,
     /// but may be a plaintext DAT.
     BadHeader(&'static str),
-    /// Content length exceeds the maximum possible length specified in the header, or the
-    /// maximum possible length.
+    /// Content length exceeds the maximum length specified in the header or the
+    /// maximum possible length [`u32::MAX`].
     ContentOverflow(&'static str),
     /// Wrapper for various `std::io::Error` errors. Represents an error reading or writing the
     /// file on disk.
