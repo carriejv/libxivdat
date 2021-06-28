@@ -1,0 +1,30 @@
+name: CIBuild
+
+on:
+  push:
+    branches:
+      - '**'
+    tags-ignore:
+      - '**'
+  pull_request:
+    - '**'
+
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build
+      run: cargo build --verbose
+    - name: Test
+      run: cargo test --verbose
+    - name: Rustfmt
+      run: rustfmt -v --check **/*.rs
+    - name: Clippy
+      run: cargo clippy
