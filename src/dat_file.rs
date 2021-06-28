@@ -77,15 +77,14 @@ impl Read for DATFile {
         let mut internal_buf = vec![0u8; read_len];
         let count = self.raw_file.read(&mut internal_buf)?;
         // Apply XOR mask to content data if needed.
-        let mask = get_mask_for_type(&self.file_type);
-        match mask {
+        match get_mask_for_type(&self.file_type) {
             Some(mask_val) => {
                 for byte in internal_buf.iter_mut() {
                     *byte = *byte ^ mask_val;
                 }
             }
             None => (),
-        }
+        };
         // Copy internal buffer into input buffer.
         buf[..read_len].clone_from_slice(&internal_buf);
         Ok(count)
@@ -162,8 +161,7 @@ impl Write for DATFile {
         };
 
         // Copy write buffer and apply XOR mask if needed.
-        let mask = get_mask_for_type(&self.file_type);
-        match mask {
+        match get_mask_for_type(&self.file_type) {
             Some(mask_val) => {
                 let mut masked_bytes = vec![0u8; buf.len()];
                 masked_bytes.copy_from_slice(buf);
@@ -708,6 +706,7 @@ mod tests {
     use std::fs::copy;
     const TEST_PATH: &str = "./resources/TEST.DAT";
     const TEST_MACRO_PATH: &str = "./resources/TEST_MACRO.DAT";
+    const TEST_EMPTY_PATH: &str = "./resources/TEST_EMPTY.DAT";
     const TEST_CONTENTS: &[u8; 5] = b"Boop!";
     const TEST_MACRO_CONTENTS: &[u8; 6] = b"Macro!";
 
@@ -794,7 +793,7 @@ mod tests {
         // Check content
         match read_content(&tmp_path) {
             Ok(content_bytes) => Ok(assert_eq!(&content_bytes, new_content)),
-            Err(err) => Err(format!("Content not written correctly: {}", err)),
+            Err(err) => Err(format!("Error reading file after write: {}", err)),
         }
     }
 
@@ -1106,6 +1105,212 @@ mod tests {
             Ok(_) => Err("No error returned.".to_owned()),
             Err(err) => match err {
                 DATError::ContentOverflow(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            }
+        }
+    }
+
+    #[test]
+    fn test_datfile_read() -> Result<(), String> {
+        let mut dat_file = match DATFile::open(TEST_PATH) {
+            Ok(dat_file) => dat_file,
+            Err(err) => return Err(format!("Open error: {}", err)),
+        };
+        let mut buf = [0u8; 1];
+        match dat_file.read(&mut buf) {
+            Ok(_) => Ok(assert_eq!(buf, TEST_CONTENTS[0..1])),
+            Err(err) => Err(format!("Read error: {}", err))
+        }
+    }
+
+    #[test]
+    fn test_datfile_read_with_mask() -> Result<(), String> {
+        let mut dat_file = match DATFile::open(TEST_MACRO_PATH) {
+            Ok(dat_file) => dat_file,
+            Err(err) => return Err(format!("Open error: {}", err)),
+        };
+        let mut buf = [0u8; 1];
+        match dat_file.read(&mut buf) {
+            Ok(_) => Ok(assert_eq!(buf, TEST_MACRO_CONTENTS[0..1])),
+            Err(err) => Err(format!("Read error: {}", err))
+        }
+    }
+
+    #[test]
+    fn test_datfile_read_past_end() -> Result<(), String> {
+        let mut dat_file = match DATFile::open(TEST_PATH) {
+            Ok(dat_file) => dat_file,
+            Err(err) => return Err(format!("Open error: {}", err)),
+        };
+        let mut buf = [1u8; 8];
+        match dat_file.read(&mut buf) {
+            Ok(_) => {
+                assert_eq!(&buf[0..5], TEST_CONTENTS);
+                // Bytes past content end should be untouched.
+                assert_eq!(buf[5..], [1u8; 3]);
+                Ok(())
+            },
+            Err(err) => Err(format!("Read error: {}", err))
+        }
+    }
+
+    #[test]
+    fn test_datfile_seek_current() -> Result<(), String> {
+        let mut dat_file = match DATFile::open(TEST_PATH) {
+            Ok(dat_file) => dat_file,
+            Err(err) => return Err(format!("Open error: {}", err)),
+        };
+        match dat_file.seek(SeekFrom::Current(1)) {
+            // Seek should be 1 byte into content
+            Ok(_) => Ok(assert_eq!(dat_file.raw_file.stream_position().unwrap(), HEADER_SIZE as u64 + 1)),
+            Err(err) => Err(format!("Seek error: {}", err))
+        }
+    }
+
+    #[test]
+    fn test_datfile_seek_start() -> Result<(), String> {
+        let mut dat_file = match DATFile::open(TEST_PATH) {
+            Ok(dat_file) => dat_file,
+            Err(err) => return Err(format!("Open error: {}", err)),
+        };
+        match dat_file.seek(SeekFrom::Start(1)) {
+            // Seek should be 1 byte into content
+            Ok(_) => Ok(assert_eq!(dat_file.raw_file.stream_position().unwrap(), HEADER_SIZE as u64 + 1)),
+            Err(err) => Err(format!("Seek error: {}", err))
+        }
+    }
+
+    #[test]
+    fn test_datfile_seek_end() -> Result<(), String> {
+        let mut dat_file = match DATFile::open(TEST_PATH) {
+            Ok(dat_file) => dat_file,
+            Err(err) => return Err(format!("Open error: {}", err)),
+        };
+        match dat_file.seek(SeekFrom::End(-1)) {
+            // Seek should be 1 byte from content (end measured without including the terminating null byte)
+            Ok(_) => Ok(assert_eq!(dat_file.raw_file.stream_position().unwrap(), HEADER_SIZE as u64 + dat_file.content_size() as u64 - 2)),
+            Err(err) => Err(format!("Seek error: {}", err))
+        }
+    }
+
+    #[test]
+    fn test_datfile_seek_current_error_negative() -> Result<(), String> {
+        let mut dat_file = match DATFile::open(TEST_PATH) {
+            Ok(dat_file) => dat_file,
+            Err(err) => return Err(format!("Open error: {}", err)),
+        };
+        match dat_file.seek(SeekFrom::Current(-10)) {
+            Ok(_) => Err("No error returned.".to_owned()),
+            Err(err) => match err.kind() {
+                std::io::ErrorKind::InvalidInput => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            }
+        }
+    }
+
+    #[test]
+    fn test_datfile_write() -> Result<(), String> {
+        // Make a tempfile
+        let tmp_dir = match tempdir() {
+            Ok(tmp_dir) => tmp_dir,
+            Err(err) => return Err(format!("Error creating temp dir: {}", err)),
+        };
+        let tmp_path = tmp_dir.path().join("TEST.DAT");
+        match copy(TEST_PATH, &tmp_path) {
+            Ok(_) => (),
+            Err(err) => return Err(format!("Could not create temp file for testing: {}", err)),
+        };
+        // Open tempfile
+        let mut opts = OpenOptions::new();
+        opts.read(true).write(true);
+        let mut dat_file = match DATFile::open_options(&tmp_path, &mut opts) {
+            Ok(dat_file) => dat_file,
+            Err(err) => return Err(format!("Error opening temp file: {}", err)),
+        };
+        // Write
+        let new_content = b"Hi!";
+        match dat_file.write(new_content) {
+            Ok(_) => (),
+            Err(err) => return Err(format!("Error writing content: {}", err)),
+        };
+        // Seek back to start
+        match dat_file.seek(SeekFrom::Start(0)) {
+            Ok(_) => (),
+            Err(err) => return Err(format!("Error seeking in file: {}", err)),
+        }
+        // Check content
+        match read_content(&tmp_path) {
+            Ok(content_bytes) => Ok(assert_eq!(&content_bytes, b"Hi!p!")),
+            Err(err) => Err(format!("Error reading file after write: {}", err)),
+        }
+    }
+
+    #[test]
+    fn test_datfile_write_extend_content_size() -> Result<(), String> {
+        // Make a tempfile
+        let tmp_dir = match tempdir() {
+            Ok(tmp_dir) => tmp_dir,
+            Err(err) => return Err(format!("Error creating temp dir: {}", err)),
+        };
+        let tmp_path = tmp_dir.path().join("TEST.DAT");
+        match copy(TEST_EMPTY_PATH, &tmp_path) {
+            Ok(_) => (),
+            Err(err) => return Err(format!("Could not create temp file for testing: {}", err)),
+        };
+        // Open tempfile
+        let mut opts = OpenOptions::new();
+        opts.read(true).write(true);
+        let mut dat_file = match DATFile::open_options(&tmp_path, &mut opts) {
+            Ok(dat_file) => dat_file,
+            Err(err) => return Err(format!("Error opening temp file: {}", err)),
+        };
+        // Write
+        let new_content = b"Long!";
+        match dat_file.write(new_content) {
+            Ok(_) => (),
+            Err(err) => return Err(format!("Error writing content: {}", err)),
+        };
+        // Seek back to start
+        match dat_file.seek(SeekFrom::Start(0)) {
+            Ok(_) => (),
+            Err(err) => return Err(format!("Error seeking in file: {}", err)),
+        }
+        // Check content
+        match read_content(&tmp_path) {
+            Ok(content_bytes) => { 
+                assert_eq!(&content_bytes, new_content);
+                assert_eq!(dat_file.content_size(), new_content.len() as u32 + 1);
+                Ok(())
+            },
+            Err(err) => Err(format!("Error reading file after write: {}", err)),
+        }
+    }
+
+    #[test]
+    fn test_datfile_write_error_over_max_size() -> Result<(), String> {
+        // Make a tempfile
+        let tmp_dir = match tempdir() {
+            Ok(tmp_dir) => tmp_dir,
+            Err(err) => return Err(format!("Error creating temp dir: {}", err)),
+        };
+        let tmp_path = tmp_dir.path().join("TEST.DAT");
+        match copy(TEST_EMPTY_PATH, &tmp_path) {
+            Ok(_) => (),
+            Err(err) => return Err(format!("Could not create temp file for testing: {}", err)),
+        };
+        // Open tempfile
+        let mut opts = OpenOptions::new();
+        opts.read(true).write(true);
+        let mut dat_file = match DATFile::open_options(&tmp_path, &mut opts) {
+            Ok(dat_file) => dat_file,
+            Err(err) => return Err(format!("Error opening temp file: {}", err)),
+        };
+        // Write
+        let new_content = b"Looooooooooooooooooong!";
+        match dat_file.write(new_content) {
+            Ok(_) => Err("No error returned.".to_owned()),
+            Err(err) => match err.kind() {
+                std::io::ErrorKind::InvalidInput => Ok(()),
                 _ => Err(format!("Incorrect error: {}", err)),
             }
         }
