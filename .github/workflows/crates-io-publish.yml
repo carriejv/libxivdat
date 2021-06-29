@@ -1,0 +1,36 @@
+name: CratesIOPublish
+
+on:
+  push:
+    tags:
+      - 'v?[0-9]+.[0-9]+.[0-9]+'
+    branches-ignore:
+      - '**'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+        components: rustfmt, clippy
+    - name: Build
+      run: cargo build --verbose
+    - name: Test
+      run: cargo test --verbose
+    - name: Rustfmt
+      run: rustfmt -v --check **/*.rs
+    - name: Clippy
+      run: cargo clippy
+    - name: Cargo Login
+      run: cargo login ${{ secrets.CRATES_IO_TOKEN }}
+    - name: Cargo Publish
+      if: success()
+      run: cargo publish
