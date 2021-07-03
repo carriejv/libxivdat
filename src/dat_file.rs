@@ -198,7 +198,7 @@ impl DATFile {
     /// let mut dat_file = DATFile::open("./resources/TEST.DAT").unwrap();
     /// let content_size = dat_file.content_size();
     /// ```
-    pub fn content_size(&mut self) -> u32 {
+    pub fn content_size(&self) -> u32 {
         self.content_size
     }
 
@@ -343,7 +343,7 @@ impl DATFile {
     ///     _ => panic!("Nope!")
     /// }
     /// ```
-    pub fn file_type(&mut self) -> DATType {
+    pub fn file_type(&self) -> DATType {
         self.file_type
     }
 
@@ -359,7 +359,7 @@ impl DATFile {
     /// let mut dat_file = DATFile::open("./resources/TEST_MACRO.DAT").unwrap();
     /// let header_end_byte = dat_file.header_end_byte();
     /// ```
-    pub fn header_end_byte(&mut self) -> u8 {
+    pub fn header_end_byte(&self) -> u8 {
         self.header_end_byte
     }
 
@@ -375,7 +375,7 @@ impl DATFile {
     /// let mut dat_file = DATFile::open("./resources/TEST_MACRO.DAT").unwrap();
     /// let header_end_byte = dat_file.max_size();
     /// ```
-    pub fn max_size(&mut self) -> u32 {
+    pub fn max_size(&self) -> u32 {
         self.max_size
     }
 
@@ -472,7 +472,7 @@ impl DATFile {
     /// Additionally, it may return a [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow)
     /// error if the new content size would exceed the maximum allowed size. This size may be adjusted using
     /// [`set_max_size()`](Self::set_max_size()), but modifying it may not produce a valid file for the game client.
-    pub fn set_content_size(&mut self, new_size: u32) -> Result<(), DATError> {
+    pub fn set_content_size(&self, new_size: u32) -> Result<(), DATError> {
         // Quick noop for no change
         if new_size == self.content_size {
             return Ok(());
@@ -541,7 +541,7 @@ impl DATFile {
     /// A [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow) is returned
     /// if the maximum size would be shorter than the content size after shrinking. To correct this,
     /// first [`set_content_size()`](Self::set_content_size()).
-    pub fn set_max_size(&mut self, new_size: u32) -> Result<(), DATError> {
+    pub fn set_max_size(&self, new_size: u32) -> Result<(), DATError> {
         // Quick noop for no change
         if new_size == self.max_size {
             return Ok(());
@@ -566,7 +566,7 @@ impl DATFile {
     ///
     /// This function will return any underling I/O errors as a
     /// [`DATError::FileIO`](crate::dat_error::DATError::FileIO).
-    pub fn sync_all(&mut self) -> Result<(), DATError> {
+    pub fn sync_all(&self) -> Result<(), DATError> {
         Ok(self.raw_file.sync_all()?)
     }
 
@@ -576,7 +576,7 @@ impl DATFile {
     ///
     /// This function will return any underling I/O errors as a
     /// [`DATError::FileIO`](crate::dat_error::DATError::FileIO).
-    pub fn sync_data(&mut self) -> Result<(), DATError> {
+    pub fn sync_data(&self) -> Result<(), DATError> {
         Ok(self.raw_file.sync_data()?)
     }
 
@@ -589,7 +589,7 @@ impl DATFile {
     /// # Errors
     ///
     /// May return a [`std::io::Error`] if one is returned by an underlying fs operation.
-    fn write_content_size_header(&mut self, size: u32) -> Result<(), std::io::Error> {
+    fn write_content_size_header(&self, size: u32) -> Result<(), std::io::Error> {
         let pre_cursor = self.raw_file.seek(SeekFrom::Current(0))?;
         self.raw_file.seek(SeekFrom::Start(INDEX_CONTENT_SIZE as u64))?;
         self.raw_file.write_all(&size.to_le_bytes())?;
@@ -607,7 +607,7 @@ impl DATFile {
     /// # Errors
     ///
     /// May return a [`std::io::Error`] if one is returned by an underlying fs operation.
-    fn write_max_size_header(&mut self, size: u32) -> Result<(), std::io::Error> {
+    fn write_max_size_header(&self, size: u32) -> Result<(), std::io::Error> {
         let pre_cursor = self.raw_file.seek(SeekFrom::Current(0))?;
         self.raw_file.seek(SeekFrom::Start(INDEX_MAX_SIZE as u64))?;
         self.raw_file.write_all(&size.to_le_bytes())?;
