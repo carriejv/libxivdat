@@ -103,10 +103,10 @@ impl TryFrom<&[u8]> for Section {
         let remaining_buf_size = x.len() - 3;
 
         match usize::from(content_size).cmp(&remaining_buf_size) {
-            Ordering::Greater => Err(DATError::ContentUnderflow(
+            Ordering::Greater => Err(DATError::ContentOverflow(
                 "Data buffer is too small for content_size specified in header.",
             )),
-            Ordering::Less => Err(DATError::ContentOverflow(
+            Ordering::Less => Err(DATError::ContentUnderflow(
                 "Data buffer is too large for content_size specified in header.",
             )),
             Ordering::Equal => Ok(Section {
@@ -151,10 +151,10 @@ impl<'a> TryFrom<&'a [u8]> for SectionData<'a> {
         let remaining_buf_size = x.len() - 3;
 
         match usize::from(content_size).cmp(&remaining_buf_size) {
-            Ordering::Greater => Err(DATError::ContentUnderflow(
+            Ordering::Greater => Err(DATError::ContentOverflow(
                 "Data buffer is too small for content_size specified in header.",
             )),
-            Ordering::Less => Err(DATError::ContentOverflow(
+            Ordering::Less => Err(DATError::ContentUnderflow(
                 "Data buffer is too large for content_size specified in header.",
             )),
             Ordering::Equal => Ok(SectionData {
@@ -352,4 +352,285 @@ pub fn read_section_content<P: AsRef<Path>>(path: P) -> Result<Vec<Section>, DAT
     let content_bytes = read_content(path)?;
     let section_data = as_section_vec(&content_bytes)?;
     Ok(section_data.iter().map(Section::from).collect())
+}
+
+// --- Unit Tests
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dat_file::{read_content, DATFile};
+
+    const TEST_FILE_PATH: &str = "./resources/TEST_SECTION.DAT";
+    const TEST_FILE_SEC1_CONTENTS: (&str, u16, &str) = ("T", 24, "This is a test section.");
+    const TEST_FILE_SEC2_CONTENTS: (&str, u16, &str) = ("A", 22, "Another test section.");
+    const TEST_SEC: [u8; 7] = [0x41, 0x04, 0x00, 0x41, 0x42, 0x43, 0x00];
+    const TEST_SEC_CONTENTS: (&str, u16, &str) = ("A", 4, "ABC");
+    const TEST_SEC_NOT_UTF8: [u8; 7] = [0xc2, 0x04, 0x00, 0x01, 0x01, 0x01, 0x00];
+    const TEST_SEC_TOO_SHORT: [u8; 6] = [0x41, 0x04, 0x00, 0x41, 0x42, 0x00];
+    const TEST_SEC_TOO_LONG: [u8; 8] = [0x41, 0x04, 0x00, 0x41, 0x42, 0x43, 0x44, 0x00];
+
+    // --- Module Functions
+
+    #[test]
+    fn test_as_section() -> Result<(), String> {
+        match as_section(&TEST_SEC[..]) {
+            Ok(section) => {
+                assert_eq!(section.tag, TEST_SEC_CONTENTS.0);
+                assert_eq!(section.content_size, TEST_SEC_CONTENTS.1);
+                assert_eq!(section.content, TEST_SEC_CONTENTS.2);
+                Ok(())
+            }
+            Err(err) => Err(format!("Error: {}", err)),
+        }
+    }
+
+    #[test]
+    fn test_as_section_vec() -> Result<(), String> {
+        let sec_bytes = match read_content(TEST_FILE_PATH) {
+            Ok(sec_bytes) => sec_bytes,
+            Err(err) => return Err(format!("Error reading file: {}", err)),
+        };
+        match as_section_vec(&sec_bytes) {
+            Ok(section) => {
+                assert_eq!(section[0].tag, TEST_FILE_SEC1_CONTENTS.0);
+                assert_eq!(section[0].content_size, TEST_FILE_SEC1_CONTENTS.1);
+                assert_eq!(section[0].content, TEST_FILE_SEC1_CONTENTS.2);
+                assert_eq!(section[1].tag, TEST_FILE_SEC2_CONTENTS.0);
+                assert_eq!(section[1].content_size, TEST_FILE_SEC2_CONTENTS.1);
+                assert_eq!(section[1].content, TEST_FILE_SEC2_CONTENTS.2);
+                Ok(())
+            }
+            Err(err) => Err(format!("Error: {}", err)),
+        }
+    }
+
+    #[test]
+    fn test_as_section_vec_error_overflow() -> Result<(), String> {
+        let mut sec_bytes = match read_content(TEST_FILE_PATH) {
+            Ok(sec_bytes) => sec_bytes,
+            Err(err) => return Err(format!("Error reading file: {}", err)),
+        };
+        // Remove the terminating null from the first section and add in arbitrary data.
+        sec_bytes[SECTION_HEADER_SIZE + usize::from(TEST_FILE_SEC1_CONTENTS.1) - 1] = 0x41;
+        match as_section_vec(&sec_bytes) {
+            Ok(_) => Err("No error returned.".to_owned()),
+            Err(err) => match err {
+                DATError::ContentOverflow(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+        }
+    }
+
+    #[test]
+    fn test_as_section_vec_error_underflow() -> Result<(), String> {
+        let mut sec_bytes = match read_content(TEST_FILE_PATH) {
+            Ok(sec_bytes) => sec_bytes,
+            Err(err) => return Err(format!("Error reading file: {}", err)),
+        };
+        // Add an early terminating null to the first section.
+        sec_bytes[SECTION_HEADER_SIZE + usize::from(TEST_FILE_SEC1_CONTENTS.1) - 2] = 0x00;
+        match as_section_vec(&sec_bytes) {
+            Ok(_) => Err("No error returned.".to_owned()),
+            Err(err) => match err {
+                DATError::ContentUnderflow(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+        }
+    }
+
+    #[test]
+    fn test_as_section_vec_error_encoding() -> Result<(), String> {
+        let mut sec_bytes = match read_content(TEST_FILE_PATH) {
+            Ok(sec_bytes) => sec_bytes,
+            Err(err) => return Err(format!("Error reading file: {}", err)),
+        };
+        // Add a random utf8 control char.
+        sec_bytes[SECTION_HEADER_SIZE + usize::from(TEST_FILE_SEC1_CONTENTS.1) - 2] = 0xc2;
+        match as_section_vec(&sec_bytes) {
+            Ok(_) => Err("No error returned.".to_owned()),
+            Err(err) => match err {
+                DATError::BadEncoding(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+        }
+    }
+
+    #[test]
+    fn test_read_section() -> Result<(), String> {
+        let mut dat_file = match DATFile::open(TEST_FILE_PATH) {
+            Ok(dat_file) => dat_file,
+            Err(err) => return Err(format!("Error opening file: {}", err)),
+        };
+        match read_section(&mut dat_file) {
+            Ok(section) => {
+                assert_eq!(section.tag, TEST_FILE_SEC1_CONTENTS.0);
+                assert_eq!(section.content_size, TEST_FILE_SEC1_CONTENTS.1);
+                assert_eq!(section.content, TEST_FILE_SEC1_CONTENTS.2);
+                Ok(())
+            }
+            Err(err) => Err(format!("Error: {}", err)),
+        }
+    }
+
+    #[test]
+    fn test_read_section_content() -> Result<(), String> {
+        // Errors are indirectly tested by as_section_vec tests.
+        match read_section_content(TEST_FILE_PATH) {
+            Ok(section) => {
+                assert_eq!(section[0].tag, TEST_FILE_SEC1_CONTENTS.0);
+                assert_eq!(section[0].content_size, TEST_FILE_SEC1_CONTENTS.1);
+                assert_eq!(section[0].content, TEST_FILE_SEC1_CONTENTS.2);
+                assert_eq!(section[1].tag, TEST_FILE_SEC2_CONTENTS.0);
+                assert_eq!(section[1].content_size, TEST_FILE_SEC2_CONTENTS.1);
+                assert_eq!(section[1].content, TEST_FILE_SEC2_CONTENTS.2);
+                Ok(())
+            }
+            Err(err) => Err(format!("Error: {}", err)),
+        }
+    }
+
+    // --- Section
+
+    #[test]
+    fn test_section_from_bytes() -> Result<(), String> {
+        match Section::try_from(&TEST_SEC[..]) {
+            Ok(section) => {
+                assert_eq!(section.tag, TEST_SEC_CONTENTS.0);
+                assert_eq!(section.content_size, TEST_SEC_CONTENTS.1);
+                assert_eq!(section.content, TEST_SEC_CONTENTS.2);
+                Ok(())
+            }
+            Err(err) => Err(format!("Error: {}", err)),
+        }
+    }
+
+    #[test]
+    fn test_section_from_bytes_error_overflow() -> Result<(), String> {
+        match Section::try_from(&TEST_SEC_TOO_SHORT[..]) {
+            Ok(_) => Err("No error returned.".to_owned()),
+            Err(err) => match err {
+                DATError::ContentOverflow(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+        }
+    }
+
+    #[test]
+    fn test_section_from_bytes_error_underflow() -> Result<(), String> {
+        match Section::try_from(&TEST_SEC_TOO_LONG[..]) {
+            Ok(_) => Err("No error returned.".to_owned()),
+            Err(err) => match err {
+                DATError::ContentUnderflow(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+        }
+    }
+
+    #[test]
+    fn test_section_from_bytes_error_encoding() -> Result<(), String> {
+        match Section::try_from(&TEST_SEC_NOT_UTF8[..]) {
+            Ok(_) => Err("No error returned.".to_owned()),
+            Err(err) => match err {
+                DATError::BadEncoding(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+        }
+    }
+
+    #[test]
+    fn test_section_to_bytes() -> Result<(), String> {
+        let sec_bytes = Vec::<u8>::from(Section {
+            tag: TEST_SEC_CONTENTS.0.to_owned(),
+            content_size: TEST_SEC_CONTENTS.1,
+            content: TEST_SEC_CONTENTS.2.to_owned(),
+        });
+        Ok(assert_eq!(sec_bytes, TEST_SEC))
+    }
+
+    #[test]
+    fn test_section_to_sectiondata() -> Result<(), String> {
+        let test_sec = Section {
+            tag: TEST_SEC_CONTENTS.0.to_owned(),
+            content_size: TEST_SEC_CONTENTS.1,
+            content: TEST_SEC_CONTENTS.2.to_owned(),
+        };
+        let sec_data = SectionData::from(&test_sec);
+        assert_eq!(sec_data.tag, TEST_SEC_CONTENTS.0);
+        assert_eq!(sec_data.content_size, TEST_SEC_CONTENTS.1);
+        assert_eq!(sec_data.content, TEST_SEC_CONTENTS.2);
+        Ok(())
+    }
+
+    // --- SectionData
+
+    #[test]
+    fn test_sectiondata_from_bytes() -> Result<(), String> {
+        match SectionData::try_from(&TEST_SEC[..]) {
+            Ok(section) => {
+                assert_eq!(section.tag, TEST_SEC_CONTENTS.0);
+                assert_eq!(section.content_size, TEST_SEC_CONTENTS.1);
+                assert_eq!(section.content, TEST_SEC_CONTENTS.2);
+                Ok(())
+            }
+            Err(err) => Err(format!("Error: {}", err)),
+        }
+    }
+
+    #[test]
+    fn test_sectiondata_from_bytes_error_overflow() -> Result<(), String> {
+        match SectionData::try_from(&TEST_SEC_TOO_SHORT[..]) {
+            Ok(_) => Err("No error returned.".to_owned()),
+            Err(err) => match err {
+                DATError::ContentOverflow(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+        }
+    }
+
+    #[test]
+    fn test_sectiondata_from_bytes_error_underflow() -> Result<(), String> {
+        match SectionData::try_from(&TEST_SEC_TOO_LONG[..]) {
+            Ok(_) => Err("No error returned.".to_owned()),
+            Err(err) => match err {
+                DATError::ContentUnderflow(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+        }
+    }
+
+    #[test]
+    fn test_sectiondata_from_bytes_error_encoding() -> Result<(), String> {
+        match SectionData::try_from(&TEST_SEC_NOT_UTF8[..]) {
+            Ok(_) => Err("No error returned.".to_owned()),
+            Err(err) => match err {
+                DATError::BadEncoding(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+        }
+    }
+
+    #[test]
+    fn test_sectiondata_to_bytes() -> Result<(), String> {
+        let sec_bytes = Vec::<u8>::from(SectionData {
+            tag: TEST_SEC_CONTENTS.0,
+            content_size: TEST_SEC_CONTENTS.1,
+            content: TEST_SEC_CONTENTS.2,
+        });
+        Ok(assert_eq!(sec_bytes, TEST_SEC))
+    }
+
+    #[test]
+    fn test_sectiondata_to_section() -> Result<(), String> {
+        let test_sec = SectionData {
+            tag: TEST_SEC_CONTENTS.0,
+            content_size: TEST_SEC_CONTENTS.1,
+            content: TEST_SEC_CONTENTS.2,
+        };
+        let section = Section::from(&test_sec);
+        assert_eq!(section.tag, TEST_SEC_CONTENTS.0);
+        assert_eq!(section.content_size, TEST_SEC_CONTENTS.1);
+        assert_eq!(section.content, TEST_SEC_CONTENTS.2);
+        Ok(())
+    }
 }

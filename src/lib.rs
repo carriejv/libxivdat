@@ -123,5 +123,14 @@ pub mod dat_file;
 /// Contains the enum of all supported file types, [`DATType`](crate::dat_type::DATType) and
 /// functions for accessing default header and mask values specific to each type.
 pub mod dat_type;
-/// TODO
+/// Contains a generic tool set for working with any section-based binary DAT files.
+/// This module contains two equivalent implementations: [`Section`](crate::section::Section),
+/// [`read_section()`](crate::section::read_section), and [`read_section_content()`](crate::section::read_section_content)
+/// for working with files on disk and [`SectionData`](`crate::section::SectionData),
+/// [`as_section()`](crate::section::as_section`), and [`as_section_vec()`](crate::section::as_section_vec)
+/// for working with pre-allocated byte arrays.
+///
+/// Because sections are variable-length data structures, no functions for writing sections in-place are
+/// provided. The recommended approach to writing section-based files is to read the entire file, then
+/// write an entirely new content block with [`write_content()`](crate::dat_file::write_content).
 pub mod section;
