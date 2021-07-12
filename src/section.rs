@@ -1,5 +1,5 @@
-use std::convert::{TryFrom, TryInto};
-use std::io::Read;
+use std::convert::{TryFrom,TryInto};
+use std::io::{Read,Seek,SeekFrom};
 
 use crate::dat_error::DATError;
 use crate::dat_file::DATFile;
@@ -167,7 +167,39 @@ pub fn get_section_header_contents(bytes: &[u8; SECTION_HEADER_SIZE]) -> Result<
     Ok((from_utf8(&bytes[..1])?, u16::from_le_bytes(bytes[1..].try_into()?)))
 }
 
-//
-// pub fn read_section(dat_file: &mut DATFile) -> Result<Section, DATError> {
-
-// }
+/// Reads the next [`Section`] from a [`DATFile`](crate::dat_file::DATFile).
+/// 
+/// # Errors
+///
+/// If an I/O error occurs while writing to the file, a [`DATError::FileIO`](crate::dat_error::DATError::FileIO)
+/// error will be returned wrapping the underlying FS error.
+/// 
+/// # Examples
+/// ```rust
+/// use libxivdat::dat_file::DATFile;
+/// use libxivdat::section::read_section;
+/// 
+/// let mut dat_file = DATFile::open("./resources/TEST_SECTION.DAT").unwrap();
+/// let section = read_section(&mut dat_file).unwrap();
+/// 
+/// assert_eq!(section.tag, "T");
+/// assert_eq!(section.content_size, 24);
+/// assert_eq!(section.content, "This is a test section.");
+///
+/// ```
+pub fn read_section(dat_file: &mut DATFile) -> Result<Section, DATError> {
+    // Read section header.
+    let mut sec_header_bytes = [0u8; SECTION_HEADER_SIZE];
+    dat_file.read_exact(&mut sec_header_bytes)?;
+    let (tag, content_size) = get_section_header_contents(&sec_header_bytes)?;
+    // Read section content
+    let mut sec_content_bytes = vec![0u8; usize::from(content_size - 1)];
+    dat_file.read_exact(&mut sec_content_bytes)?;
+    // Skip null byte. Doing it this way avoids having to re-slice content bytes.
+    dat_file.seek(SeekFrom::Current(1))?;
+    Ok(Section {
+        content: String::from_utf8(sec_content_bytes)?,
+        content_size,
+        tag: tag.to_owned(),
+    })
+}
