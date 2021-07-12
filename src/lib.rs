@@ -26,7 +26,7 @@
 //! # DAT Data Structures
 //!
 //! Internally, some DAT file content blocks use a variable-length data structure referred to as a `Section`
-//! in this library. A Section consists of a single UTF-8 char type tag, u8 size, and a null-terminated
+//! in this library. A Section consists of a single UTF-8 char type tag, u16le size, and a null-terminated
 //! UTF-8 string. A single resource (ie, a macro) is then comprised of a repeating pattern of Sections.
 //! Other DAT files use fixed-size resource blocks, with each resource immediately following the last.
 //! These are referred to as "Block DATs" below.
@@ -123,3 +123,5 @@ pub mod dat_file;
 /// Contains the enum of all supported file types, [`DATType`](crate::dat_type::DATType) and
 /// functions for accessing default header and mask values specific to each type.
 pub mod dat_type;
+/// TODO
+pub mod section;

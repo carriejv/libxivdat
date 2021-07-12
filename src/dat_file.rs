@@ -862,7 +862,7 @@ mod tests {
     #[test]
     fn test_datfile_open() -> Result<(), String> {
         match DATFile::open(TEST_PATH) {
-            Ok(mut dat_file) => {
+            Ok(dat_file) => {
                 assert_eq!(dat_file.content_size(), 6);
                 assert_eq!(dat_file.max_size, 7);
                 assert_eq!(dat_file.header_end_byte(), 0xFF);
@@ -876,7 +876,7 @@ mod tests {
     #[test]
     fn test_datfile_open_detect_type() -> Result<(), String> {
         match DATFile::open(TEST_MACRO_PATH) {
-            Ok(mut dat_file) => {
+            Ok(dat_file) => {
                 assert_eq!(dat_file.content_size(), 7);
                 assert_eq!(dat_file.max_size, 8);
                 assert_eq!(dat_file.header_end_byte(), 0xFF);
@@ -892,7 +892,7 @@ mod tests {
         let mut opts = std::fs::OpenOptions::new();
         opts.read(true).write(true);
         match DATFile::open_options(TEST_PATH, &mut opts) {
-            Ok(mut dat_file) => {
+            Ok(dat_file) => {
                 assert_eq!(dat_file.content_size(), 6);
                 assert_eq!(dat_file.max_size, 7);
                 assert_eq!(dat_file.header_end_byte(), 0xFF);
@@ -911,7 +911,7 @@ mod tests {
         };
         let tmp_path = tmp_dir.path().join("TEST.DAT");
         match DATFile::create(&tmp_path, DATType::Macro) {
-            Ok(mut dat_file) => {
+            Ok(dat_file) => {
                 assert_eq!(dat_file.content_size(), 1);
                 assert_eq!(
                     dat_file.max_size,
@@ -970,7 +970,7 @@ mod tests {
         };
         let tmp_path = tmp_dir.path().join("TEST.DAT");
         match DATFile::create_unsafe(&tmp_path, DATType::Macro, 256, 512, 0) {
-            Ok(mut dat_file) => {
+            Ok(dat_file) => {
                 assert_eq!(dat_file.content_size(), 256);
                 assert_eq!(dat_file.max_size, 512);
                 assert_eq!(dat_file.header_end_byte(), 0);
