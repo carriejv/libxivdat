@@ -86,4 +86,4 @@ My focus with this libary is mainly on macros, gearsets, and ui config. High lev
 
 ## Contributing
 
-Contributions are always welcomed. Please ensure code passes `cargo test`, `cargo clippy`, and `rustfmt -v --check **/*.rs` before making pull requests.
+Contributions are always welcomed. Please ensure code passes `cargo test --all-features`, `cargo clippy --all-features`, and `rustfmt -v --check **/*.rs` before making pull requests.

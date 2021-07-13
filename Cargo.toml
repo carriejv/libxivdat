@@ -3,13 +3,16 @@ name = "libxivdat"
 version = "0.1.0"
 edition = "2018"
 license = "Apache-2.0"
-description = "Read/write Final Fantasy XIV .DAT files."
-keywords = ["ff14", "xiv", "file", "dat", "io"]
+description = "Read & write Final Fantasy XIV .DAT files."
+keywords = ["xiv", "io", "file", "dat", "config"]
 categories = ["encoding", "filesystem"]
 authors = ["Carrie J V <carrie@carriejv.com"]
 homepage = "https://github.com/carriejv/libxivdat"
 repository = "https://github.com/carriejv/libxivdat"
 readme = "README.md"
+
+[package.metadata.docs.rs]
+all-features = true
 
 [lib]
 name = "libxivdat"
@@ -20,6 +23,9 @@ test = true
 doctest = true
 doc = true
 harness = true
+
+[features]
+macro = []
 
 [dependencies]
 

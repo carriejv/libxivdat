@@ -134,3 +134,10 @@ pub mod dat_type;
 /// provided. The recommended approach to writing section-based files is to read the entire file, then
 /// write an entirely new content block with [`write_content()`](crate::dat_file::write_content).
 pub mod section;
+/// TODO
+#[cfg(feature = "macro")]
+pub mod xiv_macro {
+    pub use crate::high_level::r#macro::*;
+}
+/// High-level submodules container.
+mod high_level;

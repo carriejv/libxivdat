@@ -31,7 +31,7 @@ pub const SECTION_HEADER_SIZE: usize = 3;
 /// |  \_ u16le content_size
 /// \_ utf8 char section_type
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Section {
     /// Data content of the section.
     pub content: String,
@@ -59,7 +59,7 @@ pub struct Section {
 /// |  \_ u16le content_size
 /// \_ utf8 char section_type
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SectionData<'a> {
     /// Data content of the section.
     pub content: &'a str,
