@@ -123,6 +123,9 @@ pub mod dat_file;
 /// Contains the enum of all supported file types, [`DATType`](crate::dat_type::DATType) and
 /// functions for accessing default header and mask values specific to each type.
 pub mod dat_type;
+/// High-level submodules container.
+#[cfg(feature = "high-level")]
+pub mod high_level;
 /// Contains a generic tool set for working with any section-based binary DAT files.
 /// This module contains two equivalent implementations: [`Section`](crate::section::Section),
 /// [`read_section()`](crate::section::read_section), and [`read_section_content()`](crate::section::read_section_content)
@@ -137,7 +140,8 @@ pub mod section;
 /// TODO
 #[cfg(feature = "macro")]
 pub mod xiv_macro {
-    pub use crate::high_level::r#macro::*;
+    pub use crate::high_level_modules::r#macro::*;
 }
-/// High-level submodules container.
-mod high_level;
+/// High-level, file-type-specific submodules container.
+mod high_level_modules;
+

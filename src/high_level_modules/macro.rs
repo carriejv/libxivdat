@@ -9,6 +9,7 @@ use crate::dat_error::DATError;
 use crate::dat_file::{check_type, DATFile};
 use crate::dat_type::DATType;
 use crate::section::{as_section_vec, read_section, read_section_content, Section, SectionData};
+use crate::high_level::{AsBytes,Validate};
 use std::path::Path;
 
 /// The [`Section`](crate::section::Section) tag for macro titles.
@@ -26,6 +27,12 @@ pub const SECTION_TAG_LINE: &str = "L";
 /// Resource definition for a Final Fantasy XIV macro.
 /// [`Macro`] owns its constituent data and is returned from helper functions like [`read_macro()`].
 /// To build a section with refrences to a pre-allocated buffer, use [`MacroData`].
+/// 
+/// # Game client macro spec
+///
+/// Title: No more than 20 utf-8 characters.
+/// Icon: Icon id and key are a matching pair corresponding to a valid [`MacroIcon`].
+/// Lines: Exactly 15 lines of no more than 180 utf-8 characters.
 ///
 /// # Data Structure
 /// The expected pattern of sections is "T" (Title), "I" (Icon), "K", (Key), and repeating "L"s (Lines).
@@ -56,6 +63,12 @@ pub struct Macro {
 /// Resource definition for a Final Fantasy XIV macro.
 /// [`MacroData`] is used to build sections with references to pre-allocated buffers.
 /// To build a section that owns its own data, use [`Macro`].
+/// 
+/// # Game client macro spec
+///
+/// Title: No more than 20 utf-8 characters.
+/// Icon: Icon id and key are a matching pair corresponding to a valid [`MacroIcon`].
+/// Lines: Exactly 15 lines of no more than 180 utf-8 characters.
 ///
 /// # Data Structure
 /// The expected pattern of sections is "T" (Title), "I" (Icon), "K", (Key), and repeating "L"s (Lines).
@@ -94,6 +107,41 @@ impl From<&MacroData<'_>> for Macro {
     }
 }
 
+impl AsBytes for Macro {
+    fn as_bytes(&self) -> Result<Vec<u8>, DATError> {
+        let sections = self.as_sections()?;
+        let mut byte_vec = Vec::<u8>::new();
+        for section in sections.into_iter() {
+            let mut sec_bytes = Vec::<u8>::from(section);
+            byte_vec.append(&mut sec_bytes);
+        }
+        Ok(byte_vec)
+    }
+}
+
+impl Validate for Macro {
+    fn validate(&self) -> Option<DATError> {
+        if self.title.len() > 20 {
+            return Some(DATError::ContentOverflow("Title is longer than 20 characters."));
+        }
+        if macro_icon_from_key_and_id(&self.icon_key, &self.icon_id).is_none() {
+            return Some(DATError::InvalidInput("Macro icon is invalid."));
+        }
+        if self.lines.len() < 15 {
+            return Some(DATError::ContentUnderflow("Macro has fewer than 15 lines."));
+        }
+        if self.lines.len() > 15 {
+            return Some(DATError::ContentOverflow("Macro has more than 15 lines."));
+        }
+        for line in self.lines.iter() {
+            if line.len() > 180 {
+                return Some(DATError::ContentOverflow("Line is longer than 180 characters."));
+            }
+        }
+        None
+    }
+}
+
 impl<'a> From<&'a Macro> for MacroData<'a> {
     fn from(x: &'a Macro) -> Self {
         MacroData {
@@ -105,31 +153,9 @@ impl<'a> From<&'a Macro> for MacroData<'a> {
     }
 }
 
-impl Macro {
-    /// Returns a byte vector representing the [`Macro`].
-    ///
-    /// # Errors
-    ///
-    /// Returns a [`DATError::ContentOverflow`] if the content of a section would exceed
-    /// the maximum allowable length. ([`u16::MAX`]` - 1`)
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use libxivdat::xiv_macro::Macro;
-    /// use libxivdat::xiv_macro::icon::MacroIcon;
-    ///
-    /// let a_macro = Macro::new(
-    ///     "Title".to_string(),
-    ///     vec!["Circle".to_string()],
-    ///     MacroIcon::SymbolCircle
-    /// ).unwrap();
-    ///
-    /// let bytes = a_macro.as_bytes();
-    /// assert!(bytes.is_ok());
-    /// ```
-    pub fn as_bytes(&self) -> Result<Vec<u8>, DATError> {
-        let sections = self.as_sections()?;
+impl AsBytes for MacroData<'_> {
+    fn as_bytes(&self) -> Result<Vec<u8>, DATError> {
+        let sections = self.as_section_data()?;
         let mut byte_vec = Vec::<u8>::new();
         for section in sections.into_iter() {
             let mut sec_bytes = Vec::<u8>::from(section);
@@ -137,7 +163,32 @@ impl Macro {
         }
         Ok(byte_vec)
     }
+}
 
+impl Validate for MacroData<'_> {
+    fn validate(&self) -> Option<DATError> {
+        if self.title.len() > 20 {
+            return Some(DATError::ContentOverflow("Title is longer than 20 characters."));
+        }
+        if macro_icon_from_key_and_id(&self.icon_key, &self.icon_id).is_none() {
+            return Some(DATError::InvalidInput("Macro icon is invalid."));
+        }
+        if self.lines.len() < 15 {
+            return Some(DATError::ContentUnderflow("Macro has fewer than 15 lines."));
+        }
+        if self.lines.len() > 15 {
+            return Some(DATError::ContentOverflow("Macro has more than 15 lines."));
+        }
+        for line in self.lines.iter() {
+            if line.len() > 180 {
+                return Some(DATError::ContentOverflow("Line is longer than 180 characters."));
+            }
+        }
+        None
+    }
+}
+
+impl Macro {
     /// Returns a [`Vec`] of [`Sections`](crate::section::Section) representing the
     /// [`Macro`].
     ///
@@ -341,12 +392,6 @@ impl Macro {
     /// To create an unvalidated [`Macro`], you can directly
     /// instantiate a struct literal.
     ///
-    /// # Macro spec
-    ///
-    /// Title: No more than 20 utf-8 characters.
-    /// Icon: Icon id and key are a matching pair corresponding to a valid [`MacroIcon`].
-    /// Lines: Exactly 15 lines of no more than 180 utf-8 characters.
-    ///
     /// # Errors
     ///
     /// Returns [`DATError::ContentOverflow`] if the title or content are too long, or if there
@@ -387,100 +432,12 @@ impl Macro {
             None => Ok(res_macro),
         }
     }
-
-    /// Validates the macro against the spec expected by the game client.
-    /// Returns a [`DATError`] describing the error if validation fails, or [`None`]
-    /// if validation is successful.
-    ///
-    /// # Macro spec
-    ///
-    /// Title: No more than 20 utf-8 characters.
-    /// Icon: Icon id and key are a matching pair corresponding to a valid [`MacroIcon`].
-    /// Lines: Exactly 15 lines of no more than 180 utf-8 characters.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use libxivdat::xiv_macro::Macro;
-    ///
-    /// let a_macro = Macro {
-    ///     icon_id: "0000000".to_string(),
-    ///     icon_key: "000".to_string(),
-    ///     lines: vec![String::new(); 15],
-    ///     title: "Title".to_string()
-    /// };
-    /// assert!(a_macro.validate().is_none());
-    /// ```
-    ///
-    /// ```rust
-    /// use libxivdat::xiv_macro::Macro;
-    ///
-    /// let a_macro = Macro {
-    ///     icon_id: "123456".to_string(),
-    ///     icon_key: "XYZ".to_string(),
-    ///     lines: vec![String::new(); 1],
-    ///     title: "Looooooooooooooooong Title".to_string()
-    /// };
-    /// assert!(a_macro.validate().is_some());
-    /// ```
-    pub fn validate(&self) -> Option<DATError> {
-        if self.title.len() > 20 {
-            return Some(DATError::ContentOverflow("Title is longer than 20 characters."));
-        }
-        if macro_icon_from_key_and_id(&self.icon_key, &self.icon_id).is_none() {
-            return Some(DATError::InvalidInput("Macro icon is invalid."));
-        }
-        if self.lines.len() < 15 {
-            return Some(DATError::ContentUnderflow("Macro has fewer than 15 lines."));
-        }
-        if self.lines.len() > 15 {
-            return Some(DATError::ContentOverflow("Macro has more than 15 lines."));
-        }
-        for line in self.lines.iter() {
-            if line.len() > 180 {
-                return Some(DATError::ContentOverflow("Line is longer than 180 characters."));
-            }
-        }
-        None
-    }
 }
 
 impl<'a> MacroData<'a> {
-    /// Returns a byte vector representing the [`MacroData`].
-    ///
-    /// # Errors
-    ///
-    /// Returns a [`DATError::ContentOverflow`] if the content of a section would exceed
-    /// the maximum allowable length. ([`u16::MAX`]` - 1`)
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use libxivdat::xiv_macro::Macro;
-    /// use libxivdat::xiv_macro::icon::MacroIcon;
-    ///
-    /// let a_macro = Macro::new(
-    ///     "Title".to_string(),
-    ///     vec!["Circle".to_string()],
-    ///     MacroIcon::SymbolCircle
-    /// ).unwrap();
-    ///
-    /// let bytes = a_macro.as_bytes();
-    /// assert!(bytes.is_ok());
-    /// ```
-    pub fn as_bytes(&self) -> Result<Vec<u8>, DATError> {
-        let sections = self.as_section_data()?;
-        let mut byte_vec = Vec::<u8>::new();
-        for section in sections.into_iter() {
-            let mut sec_bytes = Vec::<u8>::from(section);
-            byte_vec.append(&mut sec_bytes);
-        }
-        Ok(byte_vec)
-    }
-
     /// Returns a [`Vec`] of [`SectionData`](crate::section::SectionData) representing the
     /// [`MacroData`].
-    ///
+    /// 
     /// # Errors
     ///
     /// Returns a [`DATError::ContentOverflow`] if the content of a section would exceed
@@ -726,62 +683,6 @@ impl<'a> MacroData<'a> {
             None => Ok(res_macro),
         }
     }
-
-    /// Validates the macro against the spec expected by the game client.
-    /// Returns a [`DATError`] describing the error if validation fails, or [`None`]
-    /// if validation is successful.
-    ///
-    /// # Macro spec
-    ///
-    /// Title: No more than 20 utf-8 characters.
-    /// Icon: Icon id and key are a matching pair corresponding to a valid [`MacroIcon`].
-    /// Lines: Exactly 15 lines of no more than 180 utf-8 characters.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use libxivdat::xiv_macro::MacroData;
-    ///
-    /// let a_macro = MacroData {
-    ///     icon_id: "0000000",
-    ///     icon_key: "000",
-    ///     lines: vec![""; 15],
-    ///     title: "Title"
-    /// };
-    /// assert!(a_macro.validate().is_none());
-    /// ```
-    ///
-    /// ```rust
-    /// use libxivdat::xiv_macro::MacroData;
-    ///
-    /// let a_macro = MacroData {
-    ///     icon_id: "123456",
-    ///     icon_key: "XYZ",
-    ///     lines: vec![""; 1],
-    ///     title: "Looooooooooooooooong Title"
-    /// };
-    /// assert!(a_macro.validate().is_some());
-    /// ```
-    pub fn validate(&self) -> Option<DATError> {
-        if self.title.len() > 20 {
-            return Some(DATError::ContentOverflow("Title is longer than 20 characters."));
-        }
-        if macro_icon_from_key_and_id(&self.icon_key, &self.icon_id).is_none() {
-            return Some(DATError::InvalidInput("Macro icon is invalid."));
-        }
-        if self.lines.len() < 15 {
-            return Some(DATError::ContentUnderflow("Macro has fewer than 15 lines."));
-        }
-        if self.lines.len() > 15 {
-            return Some(DATError::ContentOverflow("Macro has more than 15 lines."));
-        }
-        for line in self.lines.iter() {
-            if line.len() > 180 {
-                return Some(DATError::ContentOverflow("Line is longer than 180 characters."));
-            }
-        }
-        None
-    }
 }
 
 /// Interprets a byte slice as [`MacroData`].
@@ -797,6 +698,7 @@ impl<'a> MacroData<'a> {
 /// # Examples
 /// ```rust
 /// use libxivdat::dat_file::DATFile;
+/// use libxivdat::high_level::AsBytes;
 /// use libxivdat::xiv_macro::{as_macro,read_macro};
 /// use libxivdat::xiv_macro::icon::MacroIcon;
 ///

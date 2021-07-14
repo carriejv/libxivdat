@@ -25,7 +25,8 @@ doc = true
 harness = true
 
 [features]
-macro = []
+high-level = []
+macro = ["high-level"]
 
 [dependencies]
 
