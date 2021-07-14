@@ -8,8 +8,8 @@ use icon::*;
 use crate::dat_error::DATError;
 use crate::dat_file::{check_type, DATFile};
 use crate::dat_type::DATType;
+use crate::high_level::{AsBytes, Validate};
 use crate::section::{as_section_vec, read_section, read_section_content, Section, SectionData};
-use crate::high_level::{AsBytes,Validate};
 use std::path::Path;
 
 /// The [`Section`](crate::section::Section) tag for macro titles.
@@ -27,7 +27,7 @@ pub const SECTION_TAG_LINE: &str = "L";
 /// Resource definition for a Final Fantasy XIV macro.
 /// [`Macro`] owns its constituent data and is returned from helper functions like [`read_macro()`].
 /// To build a section with refrences to a pre-allocated buffer, use [`MacroData`].
-/// 
+///
 /// # Game client macro spec
 ///
 /// Title: No more than 20 utf-8 characters.
@@ -63,7 +63,7 @@ pub struct Macro {
 /// Resource definition for a Final Fantasy XIV macro.
 /// [`MacroData`] is used to build sections with references to pre-allocated buffers.
 /// To build a section that owns its own data, use [`Macro`].
-/// 
+///
 /// # Game client macro spec
 ///
 /// Title: No more than 20 utf-8 characters.
@@ -437,7 +437,7 @@ impl Macro {
 impl<'a> MacroData<'a> {
     /// Returns a [`Vec`] of [`SectionData`](crate::section::SectionData) representing the
     /// [`MacroData`].
-    /// 
+    ///
     /// # Errors
     ///
     /// Returns a [`DATError::ContentOverflow`] if the content of a section would exceed
