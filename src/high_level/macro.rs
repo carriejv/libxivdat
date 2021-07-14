@@ -9,6 +9,18 @@ use crate::dat_error::DATError;
 use crate::section::{as_section, as_section_vec, Section, SectionData};
 use std::convert::{TryFrom, TryInto};
 
+/// The [`Section`](crate::section::Section) tag for macro titles.
+pub const SECTION_TAG_TITLE: &'static str = "T";
+
+/// The [`Section`](crate::section::Section) tag for macro icon ids.
+pub const SECTION_TAG_ICON: &'static str = "I";
+
+/// The [`Section`](crate::section::Section) tag for macro icon keys.
+pub const SECTION_TAG_KEY: &'static str = "K";
+
+/// The [`Section`](crate::section::Section) tag for macro icon lines.
+pub const SECTION_TAG_LINE: &'static str = "L";
+
 /// Resource definition for a Final Fantasy XIV macro.
 /// [`Macro`] owns its constituent data and is returned from helper functions like [`read_macro()`].
 /// To build a section with refrences to a pre-allocated buffer, use [`MacroData`].
@@ -69,33 +81,6 @@ pub struct MacroData<'a> {
     pub title: &'a str,
 }
 
-/// Types of [`Section`](crate::section::Section) present in macro files.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum MacroSectionType {
-    /// Hex ID of an icon associated with an object. This icon id only refers to
-    /// the primary icon set by the gui, not the icon & tooltip configured by
-    /// the `/micon <Action>` command.
-    /// Tag: "I"
-    Icon = 'I' as isize,
-    /// A "key" present in macro data. A key is always 3 numeric utf8 characters.
-    /// This key represents the table row in which the icon is
-    /// Tag: "K"
-    Key = 'K' as isize,
-    /// A macro line. The FFXIV game client limits macros to 15 lines of no more than
-    /// 180 utf8 characters. This is a character limit, not a byte limit.
-    /// Macro lines may contain an extended, FFXIV-specific character set (including
-    /// game icons such as the HQ icon and item link icon). These symbols are likely
-    /// to render as invalid characters outside the game client.
-    /// Tag: "L"
-    Line = 'L' as isize,
-    /// The title of a macro. The FFXIV game client limits macro titles to no more
-    /// than 20 utf8 characters. This is a character limit, not a byte limit.
-    /// Tag: "T"
-    Title = 'T' as isize,
-    /// An unknown and most likely invalid section.
-    Unknown,
-}
-
 impl From<&MacroData<'_>> for Macro {
     fn from(x: &MacroData) -> Self {
         Macro {
@@ -118,19 +103,71 @@ impl<'a> From<&'a Macro> for MacroData<'a> {
     }
 }
 
-impl From<&str> for MacroSectionType {
-    fn from(x: &str) -> MacroSectionType {
-        match isize::from(x.as_bytes()[0]) {
-            i if i == MacroSectionType::Icon as isize => MacroSectionType::Icon,
-            i if i == MacroSectionType::Key as isize => MacroSectionType::Key,
-            i if i == MacroSectionType::Line as isize => MacroSectionType::Line,
-            i if i == MacroSectionType::Title as isize => MacroSectionType::Title,
-            _ => MacroSectionType::Unknown,
-        }
-    }
-}
-
 impl Macro {
+    /// Returns a [`Vec`] of [`Sections`](crate::section::Section) representing the
+    /// [`Macro`].
+    /// 
+    /// # Errors
+    /// 
+    /// Returns a [`DATError::ContentOverflow`] if the content of a section would exceed
+    /// the maximum allowable length. ([`u16::MAX`]` - 1`)
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust
+    /// use libxivdat::xiv_macro::Macro;
+    /// use libxivdat::xiv_macro::icon::MacroIcon;
+    ///
+    /// let a_macro = Macro::new(
+    ///     "Title".to_string(), 
+    ///     vec!["Circle".to_string()],
+    ///     MacroIcon::SymbolCircle
+    /// ).unwrap();
+    /// 
+    /// let sections = a_macro.as_sections().unwrap();
+    /// 
+    /// assert_eq!(sections[0].content, "Title");
+    /// ```
+    pub fn as_sections(&self) -> Result<Vec<Section>, DATError> {
+        let mut sec_vec = vec![
+            Section::new(SECTION_TAG_TITLE.to_owned(), String::from(&self.title))?,
+            Section::new(SECTION_TAG_ICON.to_owned(), String::from(&self.icon_id))?,
+            Section::new(SECTION_TAG_KEY.to_owned(),String::from(&self.icon_key))?
+        ];
+        for line in self.lines.iter() {
+            sec_vec.push(Section::new("L".to_owned(), String::from(line))?);
+        }
+        Ok(sec_vec)
+    }
+
+    /// Changes the [`icon_key`](Self.icon_key) and [`icon_id`](Self.icon_id) to a valid pair based on an input
+    /// [`MacroIcon`].
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust
+    /// use libxivdat::xiv_macro::Macro;
+    /// use libxivdat::xiv_macro::icon::MacroIcon;
+    ///
+    /// let mut a_macro = Macro::new(
+    ///     "Title".to_string(), 
+    ///     Vec::<String>::new(),
+    ///     MacroIcon::NoIcon
+    /// ).unwrap();
+    /// 
+    /// assert_eq!(a_macro.icon_id, "0000000");
+    /// assert_eq!(a_macro.icon_key, "000");
+    /// 
+    /// a_macro.change_icon(MacroIcon::SymbolArrowUp);
+    /// assert_eq!(a_macro.icon_id, "00102FF");
+    /// assert_eq!(a_macro.icon_key, "037");
+    /// ```
+    pub fn change_icon(&mut self, icon: MacroIcon) -> () {
+        let (key, id) = macro_icon_to_key_and_id(&icon);
+        self.icon_key = key.to_owned();
+        self.icon_id = id.to_owned();
+    }
+
     /// Builds a [`Macro`] from a [`Vec`] of [`Sections`](crate::section::Section).
     /// The expected pattern of section tags is "T" (Title), "I" (Icon), "K", (Key), and repeating "L"s (Lines).
     /// Valid macros always contain exactly 15 lines, even if their contents are blank. This function checks
@@ -150,7 +187,9 @@ impl Macro {
     /// Returns [`DATError::InvalidInput`] if the sections are not provided in the order described above or
     /// the icon id and key specified are not a valid pair.
     ///
-    /// Returns [`DATError::ContentOverflow`] if the title or any line is too long.
+    /// Returns [`DATError::ContentOverflow`] if the title or any line is too long, or if there are too many lines.
+    /// 
+    /// Returns [`DATError::ContentUnderflow`] if there are too few lines.
     ///
     /// # Examples
     ///
@@ -209,15 +248,15 @@ impl Macro {
     /// assert_eq!(result_macro.lines.len(), 1);
     /// ```
     pub fn from_sections_unsafe(sections: Vec<Section>) -> Result<Macro, DATError> {
-        if sections[0].tag != "T" {
+        if sections[0].tag != SECTION_TAG_TITLE {
             return Err(DATError::InvalidInput("First section was not a Title (T) section."));
         }
         let title = String::from(&sections[0].content);
-        if sections[1].tag != "I" {
+        if sections[1].tag != SECTION_TAG_ICON {
             return Err(DATError::InvalidInput("Second section was not a Icon (I) section."));
         }
         let icon_id = String::from(&sections[1].content);
-        if sections[2].tag != "K" {
+        if sections[2].tag != SECTION_TAG_KEY {
             return Err(DATError::InvalidInput("Third section was not a Key (K) section."));
         }
         let icon_key = String::from(&sections[2].content);
@@ -234,6 +273,81 @@ impl Macro {
             lines,
             title,
         })
+    }
+
+    /// Gets the [`MacroIcon`] correpsonding to the current [`icon_key`](Self.icon_key) and [`icon_id`](Self.icon_id).
+    /// Returns [`None`] if the id and key do not correspond to a known valid icon.
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust
+    /// use libxivdat::xiv_macro::Macro;
+    /// use libxivdat::xiv_macro::icon::MacroIcon;
+    ///
+    /// let a_macro = Macro::new(
+    ///     "Title".to_string(), 
+    ///     Vec::<String>::new(),
+    ///     MacroIcon::SymbolArrowUp
+    /// ).unwrap();
+    /// assert_eq!(a_macro.get_icon().unwrap(), MacroIcon::SymbolArrowUp);
+    /// ```
+    pub fn get_icon(&self) -> Option<MacroIcon> {
+        macro_icon_from_key_and_id(&self.icon_key, &self.icon_id)
+    }
+
+    /// Builds a new [`Macro`] with a given title, [`MacroIcon`], and content.
+    /// This ensures that the macro meets the spec described below, which is used
+    /// by the game client. If the provided line count is less than 15, the count
+    /// will be padded with blank lines.
+    /// 
+    /// To create an unvalidated [`Macro`], you can directly
+    /// instantiate a struct literal.
+    /// 
+    /// # Macro spec
+    ///
+    /// Title: No more than 20 utf-8 characters.
+    /// Icon: Icon id and key are a matching pair corresponding to a valid [`MacroIcon`].
+    /// Lines: Exactly 15 lines of no more than 180 utf-8 characters.
+    /// 
+    /// # Errors
+    /// 
+    /// Returns [`DATError::ContentOverflow`] if the title or content are too long, or if there
+    /// are too many lines.
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust
+    /// use libxivdat::xiv_macro::Macro;
+    /// use libxivdat::xiv_macro::icon::MacroIcon;
+    ///
+    /// let a_macro = Macro::new(
+    ///     "Title".to_string(), 
+    ///     vec!["Circle".to_string()],
+    ///     MacroIcon::SymbolCircle
+    /// ).unwrap();
+    /// 
+    /// assert_eq!(a_macro.title, "Title");
+    /// assert_eq!(a_macro.lines[0], "Circle");
+    /// assert_eq!(a_macro.get_icon().unwrap(), MacroIcon::SymbolCircle);
+    /// ```
+    pub fn new(title: String, lines: Vec<String>, icon: MacroIcon) -> Result<Macro, DATError> {
+        let (icon_key, icon_id) = macro_icon_to_key_and_id(&icon);
+        let mut padded_lines = lines.clone();
+        if lines.len() < 15 {
+            for line in std::iter::repeat(String::new()).take(15 - lines.len()) {
+                padded_lines.push(line);
+            }
+        }
+        let res_macro = Macro {
+            icon_id: icon_id.to_owned(),
+            icon_key: icon_key.to_owned(),
+            lines: padded_lines,
+            title
+        };
+        match res_macro.validate() {
+            Some(err) => Err(err),
+            None => Ok(res_macro)
+        }
     }
 
     /// Validates the macro against the spec expected by the game client.
@@ -277,6 +391,12 @@ impl Macro {
         }
         if macro_icon_from_key_and_id(&self.icon_key, &self.icon_id).is_none() {
             return Some(DATError::InvalidInput("Macro icon is invalid."));
+        }
+        if self.lines.len() < 15 {
+            return Some(DATError::ContentUnderflow("Macro has fewer than 15 lines."));
+        }
+        if self.lines.len() > 15 {
+            return Some(DATError::ContentOverflow("Macro has more than 15 lines."));
         }
         for line in self.lines.iter() {
             if line.len() > 180 {
