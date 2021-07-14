@@ -6,7 +6,10 @@ pub mod icon;
 use icon::*;
 
 use crate::dat_error::DATError;
-use crate::section::{as_section, as_section_vec, Section, SectionData};
+use crate::dat_file::{DATFile,check_type,write_content};
+use crate::dat_type::DATType;
+use crate::section::{Section,SectionData,as_section,as_section_vec,read_section,read_section_content};
+use std::path::Path;
 
 /// The [`Section`](crate::section::Section) tag for macro titles.
 pub const SECTION_TAG_TITLE: &'static str = "T";
@@ -103,6 +106,38 @@ impl<'a> From<&'a Macro> for MacroData<'a> {
 }
 
 impl Macro {
+    /// Returns a byte vector representing the [`Macro`].
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DATError::ContentOverflow`] if the content of a section would exceed
+    /// the maximum allowable length. ([`u16::MAX`]` - 1`)
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use libxivdat::xiv_macro::Macro;
+    /// use libxivdat::xiv_macro::icon::MacroIcon;
+    ///
+    /// let a_macro = Macro::new(
+    ///     "Title".to_string(),
+    ///     vec!["Circle".to_string()],
+    ///     MacroIcon::SymbolCircle
+    /// ).unwrap();
+    ///
+    /// let bytes = a_macro.as_bytes();
+    /// assert!(bytes.is_ok());
+    /// ```
+    pub fn as_bytes(&self) -> Result<Vec<u8>, DATError> {
+        let sections = self.as_sections()?;
+        let mut byte_vec = Vec::<u8>::new();
+        for section in sections.into_iter() {
+            let mut sec_bytes = Vec::<u8>::from(section);
+            byte_vec.append(&mut sec_bytes);
+        }
+        Ok(byte_vec)
+    }
+
     /// Returns a [`Vec`] of [`Sections`](crate::section::Section) representing the
     /// [`Macro`].
     ///
@@ -227,7 +262,8 @@ impl Macro {
     ///
     /// # Errors
     ///
-    /// Returns [`DATError::InvalidInput`] if the sections are not provided in the order described above.
+    /// Returns [`DATError::InvalidInput`] if the sections are not provided in the order described above
+    /// or any sections are missing.
     ///
     /// # Examples
     ///
@@ -247,6 +283,9 @@ impl Macro {
     /// assert_eq!(result_macro.lines.len(), 1);
     /// ```
     pub fn from_sections_unsafe(sections: Vec<Section>) -> Result<Macro, DATError> {
+        if sections.len() < 4 {
+            return Err(DATError::InvalidInput("Macros require a minimum of 4 sections."));
+        }
         if sections[0].tag != SECTION_TAG_TITLE {
             return Err(DATError::InvalidInput("First section was not a Title (T) section."));
         }
@@ -407,6 +446,38 @@ impl Macro {
 }
 
 impl<'a> MacroData<'a> {
+    /// Returns a byte vector representing the [`MacroData`].
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DATError::ContentOverflow`] if the content of a section would exceed
+    /// the maximum allowable length. ([`u16::MAX`]` - 1`)
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use libxivdat::xiv_macro::Macro;
+    /// use libxivdat::xiv_macro::icon::MacroIcon;
+    ///
+    /// let a_macro = Macro::new(
+    ///     "Title".to_string(),
+    ///     vec!["Circle".to_string()],
+    ///     MacroIcon::SymbolCircle
+    /// ).unwrap();
+    ///
+    /// let bytes = a_macro.as_bytes();
+    /// assert!(bytes.is_ok());
+    /// ```
+    pub fn as_bytes(&self) -> Result<Vec<u8>, DATError> {
+        let sections = self.as_section_data()?;
+        let mut byte_vec = Vec::<u8>::new();
+        for section in sections.into_iter() {
+            let mut sec_bytes = Vec::<u8>::from(section);
+            byte_vec.append(&mut sec_bytes);
+        }
+        Ok(byte_vec)
+    }
+
     /// Returns a [`Vec`] of [`SectionData`](crate::section::SectionData) representing the
     /// [`MacroData`].
     ///
@@ -551,6 +622,9 @@ impl<'a> MacroData<'a> {
     /// assert_eq!(result_macro.lines.len(), 1);
     /// ```
     pub fn from_sections_unsafe(sections: Vec<SectionData>) -> Result<MacroData, DATError> {
+        if sections.len() < 4 {
+            return Err(DATError::InvalidInput("Macros require a minimum of 4 sections."));
+        }
         if sections[0].tag != SECTION_TAG_TITLE {
             return Err(DATError::InvalidInput("First section was not a Title (T) section."));
         }
@@ -708,4 +782,184 @@ impl<'a> MacroData<'a> {
         }
         None
     }
+}
+
+/// Reads the next [`Macro`] from a [`DATFile`](crate::dat_file::DATFile).
+///
+/// # Errors
+/// 
+/// Returns [`DATError::IncorrectType`] if the file appears to be of a type other than
+/// [`DATType::Macro`].
+///
+/// If an I/O error occurs while reading the file, a [`DATError::FileIO`](crate::dat_error::DATError::FileIO)
+/// error will be returned wrapping the underlying FS error.
+///
+/// If the macro title or lines do not contain valid utf-8, a [`DATError::BadEncoding`]
+/// error will be returned.
+///
+/// # Examples
+/// ```rust
+/// use libxivdat::dat_file::DATFile;
+/// use libxivdat::xiv_macro::read_macro;
+/// use libxivdat::xiv_macro::icon::MacroIcon;
+///
+/// let mut dat_file = DATFile::open("./resources/TEST_MACRO.DAT").unwrap();
+/// let a_macro = read_macro(&mut dat_file).unwrap();
+///
+/// assert_eq!(a_macro.title, "0");
+/// assert_eq!(a_macro.lines[0], "DefaultIcon");
+/// assert_eq!(a_macro.get_icon().unwrap(), MacroIcon::DefaultIcon);
+/// ```
+pub fn read_macro(dat_file: &mut DATFile) -> Result<Macro, DATError> {
+    if dat_file.file_type() != DATType::Macro {
+        Err(DATError::IncorrectType("Attempted to read a macro from a non-macro file."))
+    }
+    else {
+        Ok(read_macro_unsafe(dat_file)?)
+    }
+}
+
+/// Reads all [`Macros`](Macro) from a specified DAT file, returning a [`Vec`] of them.
+/// This performs only one read operation on the underlying file, loading the entire content into memory
+/// to prevent repeat file access. This is similar to [`read_content()`](crate::dat_file::read_content),
+/// but returns a `Vec<Macro>` instead of raw bytes. A valid macro file should always contain 100 macros,
+/// but this function will attempt to read files of other sizes.
+///
+/// # Errors
+/// 
+/// Returns [`DATError::IncorrectType`] if the file appears to be of a type other than
+/// [`DATType::Macro`].
+///
+/// Returns a [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow) or
+/// [`DATError::ContentUnderflow`](crate::dat_error::DATError::ContentUnderflow) if a macro section content block
+/// does not match the expected length specified in the section header.
+///
+/// Returns a [`DATError::BadEncoding`](crate::dat_error::DATError::BadEncoding) if a macro title or line does not
+/// contain valid utf8 text.
+///
+/// Returns a [`DATError::BadHeader`](crate::dat_error::DATError::BadHeader) if the specified file does not
+/// have a valid DAT header.
+///
+/// If an I/O error occurs while reading the file, a [`DATError::FileIO`](crate::dat_error::DATError::FileIO)
+/// error will be returned wrapping the underlying FS error.
+///
+/// # Examples
+/// ```rust
+/// use libxivdat::xiv_macro::read_macro_content;
+/// use libxivdat::xiv_macro::icon::MacroIcon;
+///
+/// let macro_contents = read_macro_content("./resources/TEST_MACRO.DAT").unwrap();
+///
+/// assert_eq!(macro_contents[0].title, "0");
+/// assert_eq!(macro_contents[0].lines[0], "DefaultIcon");
+/// assert_eq!(macro_contents[0].get_icon().unwrap(), MacroIcon::DefaultIcon);
+///
+/// assert_eq!(macro_contents[1].title, "1");
+/// assert_eq!(macro_contents[1].lines[0], "DPS1");
+/// assert_eq!(macro_contents[1].get_icon().unwrap(), MacroIcon::DPS1);
+/// ```
+pub fn read_macro_content<P: AsRef<Path>>(path: P) -> Result<Vec<Macro>, DATError> {
+    if check_type(&path)? != DATType::Macro {
+        Err(DATError::IncorrectType("Attempted to read a macro from a non-macro file."))
+    }
+    else {
+        Ok(read_macro_content_unsafe(path)?)
+    }
+}
+
+/// Reads the next [`Macro`] from a [`DATFile`](crate::dat_file::DATFile). This does not check that the target
+/// file is a macro file.
+///
+/// # Errors
+///
+/// If an I/O error occurs while reading the file, a [`DATError::FileIO`](crate::dat_error::DATError::FileIO)
+/// error will be returned wrapping the underlying FS error.
+///
+/// If the macro title or lines do not contain valid utf-8, a [`DATError::BadEncoding`]
+/// error will be returned.
+///
+/// # Examples
+/// ```rust
+/// use libxivdat::dat_file::DATFile;
+/// use libxivdat::xiv_macro::read_macro_unsafe;
+/// use libxivdat::xiv_macro::icon::MacroIcon;
+///
+/// let mut dat_file = DATFile::open("./resources/TEST_MACRO.DAT").unwrap();
+/// let a_macro = read_macro_unsafe(&mut dat_file).unwrap();
+///
+/// assert_eq!(a_macro.title, "0");
+/// assert_eq!(a_macro.lines[0], "DefaultIcon");
+/// assert_eq!(a_macro.get_icon().unwrap(), MacroIcon::DefaultIcon);
+/// ```
+pub fn read_macro_unsafe(dat_file: &mut DATFile) -> Result<Macro, DATError> {
+    let title_sec = read_section(dat_file)?;
+    let mut sec_vec = vec![title_sec];
+    loop {
+        let next_section = match read_section(dat_file) {
+            Ok(next_section) => next_section,
+            Err(err) => match err {
+                DATError::EndOfFile(_) => break,
+                _ => return Err(err)
+            }
+        };
+        if next_section.tag == SECTION_TAG_TITLE {
+            break;
+        }
+        sec_vec.push(next_section);
+    }
+    Ok(Macro::from_sections_unsafe(sec_vec)?)
+}
+
+/// Reads all [`Macros`](Macro) from a specified DAT file, returning a [`Vec`] of them.
+/// This performs only one read operation on the underlying file, loading the entire content into memory
+/// to prevent repeat file access. This is similar to [`read_content()`](crate::dat_file::read_content),
+/// but returns a `Vec<Macro>` instead of raw bytes. A valid macro file should always contain 100 macros,
+/// but this function will attempt to read files of other sizes. This does not check that the
+/// file is a macro file.
+///
+/// # Errors
+///
+/// Returns a [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow) or
+/// [`DATError::ContentUnderflow`](crate::dat_error::DATError::ContentUnderflow) if a macro section content block
+/// does not match the expected length specified in the section header.
+///
+/// Returns a [`DATError::BadEncoding`](crate::dat_error::DATError::BadEncoding) if a macro title or line does not
+/// contain valid utf8 text.
+///
+/// Returns a [`DATError::BadHeader`](crate::dat_error::DATError::BadHeader) if the specified file does not
+/// have a valid DAT header.
+///
+/// If an I/O error occurs while reading the file, a [`DATError::FileIO`](crate::dat_error::DATError::FileIO)
+/// error will be returned wrapping the underlying FS error.
+///
+/// # Examples
+/// ```rust
+/// use libxivdat::xiv_macro::read_macro_content_unsafe;
+/// use libxivdat::xiv_macro::icon::MacroIcon;
+///
+/// let macro_contents = read_macro_content_unsafe("./resources/TEST_MACRO.DAT").unwrap();
+///
+/// assert_eq!(macro_contents[0].title, "0");
+/// assert_eq!(macro_contents[0].lines[0], "DefaultIcon");
+/// assert_eq!(macro_contents[0].get_icon().unwrap(), MacroIcon::DefaultIcon);
+///
+/// assert_eq!(macro_contents[1].title, "1");
+/// assert_eq!(macro_contents[1].lines[0], "DPS1");
+/// assert_eq!(macro_contents[1].get_icon().unwrap(), MacroIcon::DPS1);
+/// ```
+pub fn read_macro_content_unsafe<P: AsRef<Path>>(path: P) -> Result<Vec<Macro>, DATError> {
+    let sections = read_section_content(path)?;
+    let mut macro_vec = Vec::<Macro>::new();
+    let mut sec_vec = Vec::<Section>::new();
+    for next_section in sections.into_iter() {
+        // Push a new macro on every title
+        if next_section.tag == SECTION_TAG_TITLE {
+            if sec_vec.len() > 0 {
+                macro_vec.push(Macro::from_sections_unsafe(sec_vec)?);
+            }
+            sec_vec = Vec::<Section>::new();
+        }
+        sec_vec.push(next_section);
+    }
+    Ok(macro_vec)
 }
