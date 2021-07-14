@@ -59,7 +59,7 @@ pub struct Section {
 /// |  \_ u16le content_size
 /// \_ utf8 char section_type
 /// ```
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SectionData<'a> {
     /// Data content of the section.
     pub content: &'a str,
@@ -163,6 +163,64 @@ impl<'a> TryFrom<&'a [u8]> for SectionData<'a> {
                 tag,
             }),
         }
+    }
+}
+
+impl Section {
+    /// Builds a new [`Section`] with a given tag and content
+    /// 
+    /// # Examples
+    /// ```rust
+    /// use libxivdat::section::Section;
+    /// 
+    /// let new_section = Section::new("T".to_string(), "Macro title!".to_string()).unwrap();
+    /// assert_eq!(new_section.tag, "T");
+    /// assert_eq!(new_section.content, "Macro title!");
+    /// assert_eq!(new_section.content_size, 13);
+    /// ```
+    pub fn new(tag: String, content: String) -> Result<Self, DATError> {
+        if tag.len() != 1 {
+            return Err(DATError::InvalidInput("Tags may only be a single character in length."));
+        }
+        // Include space for terminating null
+        let content_size = match u16::try_from(content.len() + 1) {
+            Ok(content_size) => content_size,
+            Err(_) => return Err(DATError::ContentOverflow("Section content exceeds maximum possible size (u16::MAX - 1).")),
+        };
+        Ok(Section {
+            content,
+            content_size,
+            tag
+        })
+    }
+}
+
+impl<'a> SectionData<'a> {
+    /// Builds a new [`SectionData`] with a given tag and content
+    /// 
+    /// # Examples
+    /// ```rust
+    /// use libxivdat::section::SectionData;
+    /// 
+    /// let new_section = SectionData::new("T", "Macro title!").unwrap();
+    /// assert_eq!(new_section.tag, "T");
+    /// assert_eq!(new_section.content, "Macro title!");
+    /// assert_eq!(new_section.content_size, 13);
+    /// ```
+    pub fn new(tag: &'a str, content: &'a str) -> Result<Self, DATError> {
+        if tag.len() != 1 {
+            return Err(DATError::InvalidInput("Tags may only be a single character in length."));
+        }
+        // Include space for terminating null
+        let content_size = match u16::try_from(content.len() + 1) {
+            Ok(content_size) => content_size,
+            Err(_) => return Err(DATError::ContentOverflow("Section content exceeds maximum possible size (u16::MAX - 1).")),
+        };
+        Ok(SectionData::<'a> {
+            content,
+            content_size,
+            tag
+        })
     }
 }
 
@@ -493,6 +551,45 @@ mod tests {
     // --- Section
 
     #[test]
+    fn test_section_new() -> Result<(), String> {
+        match Section::new("T".to_string(), "Test".to_string()) {
+            Ok(section) => {
+                assert_eq!(section.tag, "T");
+                assert_eq!(section.content_size, 5);
+                assert_eq!(section.content, "Test");
+                Ok(())
+            }
+            Err(err) => Err(format!("Error: {}", err)),
+        }
+    }
+
+    #[test]
+    fn test_section_new_error_title_size() -> Result<(), String> {
+        match Section::new("Too long".to_string(), "Test".to_string()) {
+            Ok(_) => {
+                Err("No error returned".to_owned())
+            }
+            Err(err) => match err {
+                DATError::InvalidInput(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+        }
+    }
+
+    #[test]
+    fn test_section_new_error_content_size() -> Result<(), String> {
+        match Section::new("T".to_string(), (0..u16::MAX).map(|_| "X").collect()) {
+            Ok(_) => {
+                Err("No error returned".to_owned())
+            }
+            Err(err) => match err {
+                DATError::ContentOverflow(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+        }
+    }
+
+    #[test]
     fn test_section_from_bytes() -> Result<(), String> {
         match Section::try_from(&TEST_SEC[..]) {
             Ok(section) => {
@@ -563,6 +660,45 @@ mod tests {
     }
 
     // --- SectionData
+
+    #[test]
+    fn test_sectiondata_new() -> Result<(), String> {
+        match SectionData::new("T", "Test") {
+            Ok(section) => {
+                assert_eq!(section.tag, "T");
+                assert_eq!(section.content_size, 5);
+                assert_eq!(section.content, "Test");
+                Ok(())
+            }
+            Err(err) => Err(format!("Error: {}", err)),
+        }
+    }
+
+    #[test]
+    fn test_sectiondata_new_error_title_size() -> Result<(), String> {
+        match SectionData::new("Too long", "Test") {
+            Ok(_) => {
+                Err("No error returned".to_owned())
+            }
+            Err(err) => match err {
+                DATError::InvalidInput(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+        }
+    }
+
+    #[test]
+    fn test_sectiondata_new_error_content_size() -> Result<(), String> {
+        match SectionData::new("T", &(0..u16::MAX).map(|_| "X").collect::<String>()) {
+            Ok(_) => {
+                Err("No error returned".to_owned())
+            }
+            Err(err) => match err {
+                DATError::ContentOverflow(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+        }
+    }
 
     #[test]
     fn test_sectiondata_from_bytes() -> Result<(), String> {

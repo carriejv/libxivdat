@@ -178,7 +178,7 @@ pub enum MacroIcon {
 /// Returns the [`MacroIcon`] corresponding to the raw values of the key and icon
 /// [`Sections`](crate::section::Section) of a macro.
 ///
-/// `None` is only returned if the provided key and id values are completely invalid.
+/// `[None]` is only returned if the provided key and id values are completely invalid.
 /// Values of "000" and "0000000" (used for undefined macros) are considered valid and return
 /// [`MacroIcon::NoIcon`].
 ///
