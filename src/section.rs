@@ -2,14 +2,21 @@ use std::convert::{TryFrom, TryInto};
 use std::io::{Read, Seek, SeekFrom};
 
 use crate::dat_error::DATError;
-use crate::dat_file::{read_content, DATFile};
+use crate::dat_file::{check_type, read_content, DATFile};
 use crate::dat_type::DATType;
 use std::cmp::Ordering;
 use std::path::Path;
 use std::str::from_utf8;
 
-/// Array of [`DATTypes`](crate::dat_type::DATType) that have `Section`-based contents.
-pub const SECTION_BASED_TYPES: [DATType; 4] = [DATType::ACQ, DATType::KEYBIND, DATType::MACRO, DATType::MACROSYS];
+/// Array of [`DATTypes`](crate::dat_type::DATType) that have `Section`-based contents. [`DATType::Unknown`] is allowed,
+/// since its contents are not known.
+pub const SECTION_BASED_TYPES: [DATType; 5] = [
+    DATType::ACQ,
+    DATType::KEYBIND,
+    DATType::MACRO,
+    DATType::MACROSYS,
+    DATType::Unknown,
+];
 
 /// Length of a section header in bytes.
 pub const SECTION_HEADER_SIZE: usize = 3;
@@ -344,10 +351,13 @@ pub fn get_section_header_contents(bytes: &[u8; SECTION_HEADER_SIZE]) -> Result<
 ///
 /// # Errors
 ///
-/// If an I/O error occurs while writing to the file, a [`DATError::FileIO`](crate::dat_error::DATError::FileIO)
+/// Returns [`DATError::IncorrectType`] if the file appears to be of a [`DATType`]
+/// that does not contain sections.
+///
+/// If an I/O error occurs while writing to the file, a [`DATError::FileIO`]
 /// error will be returned wrapping the underlying FS error.
 ///
-/// If the tag or content is not valid utf8 text, a [`DATError::BadEncoding`](crate::dat_error::DATError::BadEncoding)
+/// If the tag or content is not valid utf8 text, a [`DATError::BadEncoding`]
 /// error will be returned.
 ///
 /// # Examples
@@ -364,20 +374,13 @@ pub fn get_section_header_contents(bytes: &[u8; SECTION_HEADER_SIZE]) -> Result<
 ///
 /// ```
 pub fn read_section(dat_file: &mut DATFile) -> Result<Section, DATError> {
-    // Read section header.
-    let mut sec_header_bytes = [0u8; SECTION_HEADER_SIZE];
-    dat_file.read_exact(&mut sec_header_bytes)?;
-    let (tag, content_size) = get_section_header_contents(&sec_header_bytes)?;
-    // Read section content
-    let mut sec_content_bytes = vec![0u8; usize::from(content_size - 1)];
-    dat_file.read_exact(&mut sec_content_bytes)?;
-    // Skip null byte. Doing it this way avoids having to re-slice content bytes.
-    dat_file.seek(SeekFrom::Current(1))?;
-    Ok(Section {
-        content: String::from_utf8(sec_content_bytes)?,
-        content_size,
-        tag: tag.to_owned(),
-    })
+    if SECTION_BASED_TYPES.contains(&dat_file.file_type()) {
+        Ok(read_section_unsafe(dat_file)?)
+    } else {
+        Err(DATError::IncorrectType(
+            "Target file is of a type that should not contain sections.",
+        ))
+    }
 }
 
 /// Reads all [`Sections`](Section) from a specified DAT file, returning a [`Vec`] of them.
@@ -386,6 +389,9 @@ pub fn read_section(dat_file: &mut DATFile) -> Result<Section, DATError> {
 /// but returns a `Vec<Section>` instead of raw bytes.
 ///
 /// # Errors
+///
+/// Returns [`DATError::IncorrectType`] if the file appears to be of a [`DATType`]
+/// that does not contain sections.
 ///
 /// Returns a [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow) or
 /// [`DATError::ContentUnderflow`](crate::dat_error::DATError::ContentUnderflow) if a section content block
@@ -415,6 +421,92 @@ pub fn read_section(dat_file: &mut DATFile) -> Result<Section, DATError> {
 /// assert_eq!(section[1].content, "Another test section.");
 /// ```
 pub fn read_section_content<P: AsRef<Path>>(path: P) -> Result<Vec<Section>, DATError> {
+    if SECTION_BASED_TYPES.contains(&check_type(&path)?) {
+        Ok(read_section_content_unsafe(path)?)
+    } else {
+        Err(DATError::IncorrectType(
+            "Target file is of a type that should not contain sections.",
+        ))
+    }
+}
+
+/// Reads the next [`Section`] from a [`DATFile`](crate::dat_file::DATFile). This does not check that the
+/// file is of a type that should contain sections.
+///
+/// # Errors
+///
+/// If an I/O error occurs while writing to the file, a [`DATError::FileIO`]
+/// error will be returned wrapping the underlying FS error.
+///
+/// If the tag or content is not valid utf8 text, a [`DATError::BadEncoding`]
+/// error will be returned.
+///
+/// # Examples
+/// ```rust
+/// use libxivdat::dat_file::DATFile;
+/// use libxivdat::section::read_section_unsafe;
+///
+/// let mut dat_file = DATFile::open("./resources/TEST_SECTION.DAT").unwrap();
+/// let section = read_section_unsafe(&mut dat_file).unwrap();
+///
+/// assert_eq!(section.tag, "T");
+/// assert_eq!(section.content_size, 24);
+/// assert_eq!(section.content, "This is a test section.");
+///
+/// ```
+pub fn read_section_unsafe(dat_file: &mut DATFile) -> Result<Section, DATError> {
+    // Read section header.
+    let mut sec_header_bytes = [0u8; SECTION_HEADER_SIZE];
+    dat_file.read_exact(&mut sec_header_bytes)?;
+    let (tag, content_size) = get_section_header_contents(&sec_header_bytes)?;
+    // Read section content
+    let mut sec_content_bytes = vec![0u8; usize::from(content_size - 1)];
+    dat_file.read_exact(&mut sec_content_bytes)?;
+    // Skip null byte. Doing it this way avoids having to re-slice content bytes.
+    dat_file.seek(SeekFrom::Current(1))?;
+    Ok(Section {
+        content: String::from_utf8(sec_content_bytes)?,
+        content_size,
+        tag: tag.to_owned(),
+    })
+}
+
+/// Reads all [`Sections`](Section) from a specified DAT file, returning a [`Vec`] of them.
+/// This performs only one read operation on the underlying file, loading the entire content into memory
+/// to prevent repeat file access. This is similar to [`read_content()`](crate::dat_file::read_content),
+/// but returns a `Vec<Section>` instead of raw bytes. This does not check that the
+/// file is of a type that should contain sections.
+///
+/// # Errors
+///
+/// Returns a [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow) or
+/// [`DATError::ContentUnderflow`](crate::dat_error::DATError::ContentUnderflow) if a section content block
+/// does not match the expected length specified in the section header.
+///
+/// Returns a [`DATError::BadEncoding`](crate::dat_error::DATError::BadEncoding) if a section does not
+/// contain valid utf8 text.
+///
+/// Returns a [`DATError::BadHeader`](crate::dat_error::DATError::BadHeader) if the specified file does not
+/// have a valid DAT header.
+///
+/// If an I/O error occurs while writing to the file, a [`DATError::FileIO`](crate::dat_error::DATError::FileIO)
+/// error will be returned wrapping the underlying FS error.
+///
+/// # Examples
+/// ```rust
+/// use libxivdat::section::read_section_content_unsafe;
+///
+/// let section = read_section_content_unsafe("./resources/TEST_SECTION.DAT").unwrap();
+///
+/// assert_eq!(section[0].tag, "T");
+/// assert_eq!(section[0].content_size, 24);
+/// assert_eq!(section[0].content, "This is a test section.");
+///
+/// assert_eq!(section[1].tag, "A");
+/// assert_eq!(section[1].content_size, 22);
+/// assert_eq!(section[1].content, "Another test section.");
+/// ```
+pub fn read_section_content_unsafe<P: AsRef<Path>>(path: P) -> Result<Vec<Section>, DATError> {
     let content_bytes = read_content(path)?;
     let section_data = as_section_vec(&content_bytes)?;
     Ok(section_data.iter().map(Section::from).collect())
@@ -428,6 +520,7 @@ mod tests {
     use crate::dat_file::{read_content, DATFile};
 
     const TEST_FILE_PATH: &str = "./resources/TEST_SECTION.DAT";
+    const TEST_NON_SECTION_PATH: &str = "./resources/TEST_BLOCK.DAT";
     const TEST_FILE_SEC1_CONTENTS: (&str, u16, &str) = ("T", 24, "This is a test section.");
     const TEST_FILE_SEC2_CONTENTS: (&str, u16, &str) = ("A", 22, "Another test section.");
     const TEST_SEC: [u8; 7] = [0x41, 0x04, 0x00, 0x41, 0x42, 0x43, 0x00];
@@ -540,6 +633,21 @@ mod tests {
     }
 
     #[test]
+    fn test_read_section_error_type() -> Result<(), String> {
+        let mut dat_file = match DATFile::open(TEST_NON_SECTION_PATH) {
+            Ok(dat_file) => dat_file,
+            Err(err) => return Err(format!("Error opening file: {}", err)),
+        };
+        match read_section(&mut dat_file) {
+            Ok(_) => Err("No error returned.".to_owned()),
+            Err(err) => match err {
+                DATError::IncorrectType(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+        }
+    }
+
+    #[test]
     fn test_read_section_content() -> Result<(), String> {
         // Errors are indirectly tested by as_section_vec tests.
         match read_section_content(TEST_FILE_PATH) {
@@ -553,6 +661,17 @@ mod tests {
                 Ok(())
             }
             Err(err) => Err(format!("Error: {}", err)),
+        }
+    }
+
+    #[test]
+    fn test_read_section_content_error_type() -> Result<(), String> {
+        match read_section_content(TEST_NON_SECTION_PATH) {
+            Ok(_) => Err("No error returned.".to_owned()),
+            Err(err) => match err {
+                DATError::IncorrectType(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
         }
     }
 

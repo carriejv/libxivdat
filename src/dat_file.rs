@@ -617,6 +617,31 @@ impl DATFile {
     }
 }
 
+/// Checks the [`DATType`] of a DAT file based on the header contents. This should be treated as a best guess,
+/// since the header is not fully understood.
+///
+/// # Errors
+///
+/// If an I/O error occurs while reading the file, a [`DATError::FileIO`](crate::dat_error::DATError::FileIO)
+/// error will be returned wrapping the underlying FS error.
+///
+/// A [`DATError::BadHeader`](crate::dat_error::DATError::BadHeader) will be returned if the file header
+/// cannot be validated, indicating a non-DAT or corrupt file.
+///
+/// # Examples
+///
+/// ```rust
+/// use libxivdat::dat_file::check_type;
+/// use libxivdat::dat_type::DATType;
+///
+/// let dat_type = check_type("./resources/TEST_MACRO.DAT").unwrap();
+/// assert_eq!(dat_type, DATType::Macro);
+/// ```
+pub fn check_type<P: AsRef<Path>>(path: P) -> Result<DATType, DATError> {
+    let dat_file = DATFile::open(path)?;
+    Ok(dat_file.file_type())
+}
+
 /// Tries to read an 0x11 length byte array as a DAT file header.
 /// Returns a tuple containing (`file_type`, `max_size`, `content_size`, `header_end_byte`).
 ///
@@ -680,7 +705,7 @@ pub fn get_header_contents(header: &[u8; HEADER_SIZE as usize]) -> Result<(DATTy
 ///
 /// # Errors
 ///
-/// If an I/O error occurs while writing to the file, a [`DATError::FileIO`](crate::dat_error::DATError::FileIO)
+/// If an I/O error occurs while reading the file, a [`DATError::FileIO`](crate::dat_error::DATError::FileIO)
 /// error will be returned wrapping the underlying FS error.
 ///
 /// A [`DATError::BadHeader`](crate::dat_error::DATError::BadHeader) will be returned if the file header
@@ -771,6 +796,14 @@ mod tests {
     const TEST_MACRO_CONTENTS: &[u8; 6] = b"Macro!";
 
     // --- Module Functions
+
+    #[test]
+    fn test_check_type() -> Result<(), String> {
+        match check_type(TEST_MACRO_PATH) {
+            Ok(dat_type) => Ok(assert_eq!(dat_type, DATType::Macro)),
+            Err(err) => Err(format!("Read error: {}", err)),
+        }
+    }
 
     #[test]
     fn test_get_header_contents() -> Result<(), String> {
