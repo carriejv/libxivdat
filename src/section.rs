@@ -168,11 +168,11 @@ impl<'a> TryFrom<&'a [u8]> for SectionData<'a> {
 
 impl Section {
     /// Builds a new [`Section`] with a given tag and content
-    /// 
+    ///
     /// # Examples
     /// ```rust
     /// use libxivdat::section::Section;
-    /// 
+    ///
     /// let new_section = Section::new("T".to_string(), "Macro title!".to_string()).unwrap();
     /// assert_eq!(new_section.tag, "T");
     /// assert_eq!(new_section.content, "Macro title!");
@@ -185,23 +185,27 @@ impl Section {
         // Include space for terminating null
         let content_size = match u16::try_from(content.len() + 1) {
             Ok(content_size) => content_size,
-            Err(_) => return Err(DATError::ContentOverflow("Section content exceeds maximum possible size (u16::MAX - 1).")),
+            Err(_) => {
+                return Err(DATError::ContentOverflow(
+                    "Section content exceeds maximum possible size (u16::MAX - 1).",
+                ))
+            }
         };
         Ok(Section {
             content,
             content_size,
-            tag
+            tag,
         })
     }
 }
 
 impl<'a> SectionData<'a> {
     /// Builds a new [`SectionData`] with a given tag and content
-    /// 
+    ///
     /// # Examples
     /// ```rust
     /// use libxivdat::section::SectionData;
-    /// 
+    ///
     /// let new_section = SectionData::new("T", "Macro title!").unwrap();
     /// assert_eq!(new_section.tag, "T");
     /// assert_eq!(new_section.content, "Macro title!");
@@ -214,12 +218,16 @@ impl<'a> SectionData<'a> {
         // Include space for terminating null
         let content_size = match u16::try_from(content.len() + 1) {
             Ok(content_size) => content_size,
-            Err(_) => return Err(DATError::ContentOverflow("Section content exceeds maximum possible size (u16::MAX - 1).")),
+            Err(_) => {
+                return Err(DATError::ContentOverflow(
+                    "Section content exceeds maximum possible size (u16::MAX - 1).",
+                ))
+            }
         };
         Ok(SectionData::<'a> {
             content,
             content_size,
-            tag
+            tag,
         })
     }
 }
@@ -566,9 +574,7 @@ mod tests {
     #[test]
     fn test_section_new_error_title_size() -> Result<(), String> {
         match Section::new("Too long".to_string(), "Test".to_string()) {
-            Ok(_) => {
-                Err("No error returned".to_owned())
-            }
+            Ok(_) => Err("No error returned".to_owned()),
             Err(err) => match err {
                 DATError::InvalidInput(_) => Ok(()),
                 _ => Err(format!("Incorrect error: {}", err)),
@@ -579,9 +585,7 @@ mod tests {
     #[test]
     fn test_section_new_error_content_size() -> Result<(), String> {
         match Section::new("T".to_string(), (0..u16::MAX).map(|_| "X").collect()) {
-            Ok(_) => {
-                Err("No error returned".to_owned())
-            }
+            Ok(_) => Err("No error returned".to_owned()),
             Err(err) => match err {
                 DATError::ContentOverflow(_) => Ok(()),
                 _ => Err(format!("Incorrect error: {}", err)),
@@ -677,9 +681,7 @@ mod tests {
     #[test]
     fn test_sectiondata_new_error_title_size() -> Result<(), String> {
         match SectionData::new("Too long", "Test") {
-            Ok(_) => {
-                Err("No error returned".to_owned())
-            }
+            Ok(_) => Err("No error returned".to_owned()),
             Err(err) => match err {
                 DATError::InvalidInput(_) => Ok(()),
                 _ => Err(format!("Incorrect error: {}", err)),
@@ -690,9 +692,7 @@ mod tests {
     #[test]
     fn test_sectiondata_new_error_content_size() -> Result<(), String> {
         match SectionData::new("T", &(0..u16::MAX).map(|_| "X").collect::<String>()) {
-            Ok(_) => {
-                Err("No error returned".to_owned())
-            }
+            Ok(_) => Err("No error returned".to_owned()),
             Err(err) => match err {
                 DATError::ContentOverflow(_) => Ok(()),
                 _ => Err(format!("Incorrect error: {}", err)),

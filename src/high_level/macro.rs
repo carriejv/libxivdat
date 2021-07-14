@@ -6,13 +6,13 @@ pub mod icon;
 use icon::*;
 
 use crate::dat_error::DATError;
-use crate::section::{Section,SectionData,as_section,as_section_vec};
-use std::convert::{TryFrom,TryInto};
+use crate::section::{as_section, as_section_vec, Section, SectionData};
+use std::convert::{TryFrom, TryInto};
 
 /// Resource definition for a Final Fantasy XIV macro.
 /// [`Macro`] owns its constituent data and is returned from helper functions like [`read_macro()`].
 /// To build a section with refrences to a pre-allocated buffer, use [`MacroData`].
-/// 
+///
 /// # Data Structure
 /// The expected pattern of sections is "T" (Title), "I" (Icon), "K", (Key), and repeating "L"s (Lines).
 /// Valid macros always contain exactly 15 lines, even if their contents are blank. This library does not
@@ -42,7 +42,7 @@ pub struct Macro {
 /// Resource definition for a Final Fantasy XIV macro.
 /// [`MacroData`] is used to build sections with references to pre-allocated buffers.
 /// To build a section that owns its own data, use [`Macro`].
-/// 
+///
 /// # Data Structure
 /// The expected pattern of sections is "T" (Title), "I" (Icon), "K", (Key), and repeating "L"s (Lines).
 /// Valid macros always contain exactly 15 lines, even if their contents are blank. This library does not
@@ -93,7 +93,7 @@ pub enum MacroSectionType {
     /// Tag: "T"
     Title = 'T' as isize,
     /// An unknown and most likely invalid section.
-    Unknown
+    Unknown,
 }
 
 impl From<&MacroData<'_>> for Macro {
@@ -102,7 +102,7 @@ impl From<&MacroData<'_>> for Macro {
             icon_key: x.icon_key.to_owned(),
             icon_id: x.icon_id.to_owned(),
             lines: x.lines.iter().map(|item| String::from(*item)).collect(),
-            title: x.title.to_owned()
+            title: x.title.to_owned(),
         }
     }
 }
@@ -113,7 +113,7 @@ impl<'a> From<&'a Macro> for MacroData<'a> {
             icon_key: &x.icon_key,
             icon_id: &x.icon_id,
             lines: x.lines.iter().map(String::as_str).collect(),
-            title: &x.title
+            title: &x.title,
         }
     }
 }
@@ -135,46 +135,46 @@ impl Macro {
     /// The expected pattern of section tags is "T" (Title), "I" (Icon), "K", (Key), and repeating "L"s (Lines).
     /// Valid macros always contain exactly 15 lines, even if their contents are blank. This function checks
     /// the data for validity, unlick [`from_sections_unsafe()`](Self::from_sections_unsafe)
-    /// 
+    ///
     /// This is equivalent to calling [`from_sections_unsafe()`](Self::from_sections_unsafe) followed by
     /// [`validate()`](Self::validate) on the resulting [`Macro`].
-    /// 
+    ///
     /// # Macro spec
-    /// 
+    ///
     /// Title: No more than 20 utf-8 characters.
     /// Icon: Icon id and key are a matching pair corresponding to a valid [`MacroIcon`].
     /// Lines: Exactly 15 lines of no more than 180 utf-8 characters.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns [`DATError::InvalidInput`] if the sections are not provided in the order described above or
     /// the icon id and key specified are not a valid pair.
-    /// 
+    ///
     /// Returns [`DATError::ContentOverflow`] if the title or any line is too long.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```rust
-    /// use libxivdat::xiv_macro::from_sections_unsafe;
-    /// 
+    /// use libxivdat::section::Section;
+    /// use libxivdat::xiv_macro::Macro;
+    ///
     /// let mut sections = vec![
     ///     Section { content: "Title".to_string(), content_size: 6, tag: "T".to_string() },
     ///     Section { content: "0000000".to_string(), content_size: 8, tag: "I".to_string() },
     ///     Section { content: "000".to_string(), content_size: 4, tag: "K".to_string() }
     /// ];
     /// for line in std::iter::repeat(String::new()).take(15) {
-    ///     sections.push(line);
+    ///     sections.push(Section { content: line, content_size: 1, tag: "L".to_string() });
     /// }
-    /// let macro = from_sections(sections).unwrap();
-    /// 
-    /// assert_eq!(macro.title, "Title");
+    /// let result_macro = Macro::from_sections(sections).unwrap();
+    ///
+    /// assert_eq!(result_macro.title, "Title");
     /// ```
     pub fn from_sections(sections: Vec<Section>) -> Result<Macro, DATError> {
         let res_macro = Self::from_sections_unsafe(sections)?;
         if let Some(validation_err) = res_macro.validate() {
             Err(validation_err)
-        }
-        else {
+        } else {
             Ok(res_macro)
         }
     }
@@ -183,46 +183,47 @@ impl Macro {
     /// The expected pattern of section tags is "T" (Title), "I" (Icon), "K", (Key), and repeating "L"s (Lines).
     /// Valid macros always contain exactly 15 lines, even if their contents are blank. This library does not
     /// strictly enforce this pattern, and will read lines until the next title.
-    /// 
+    ///
     /// This function does not check that the actual section content is valid. To perform validity checks,
     /// use [`from_sections()`](from_sections).
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns [`DATError::InvalidInput`] if the sections are not provided in the order described above.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```rust
-    /// use libxivdat::xiv_macro::from_sections_unsafe;
-    /// 
+    /// use libxivdat::section::Section;
+    /// use libxivdat::xiv_macro::Macro;
+    ///
     /// let sections = vec![
     ///     Section { content: "Title".to_string(), content_size: 6, tag: "T".to_string() },
     ///     Section { content: "0000000".to_string(), content_size: 8, tag: "I".to_string() },
     ///     Section { content: "000".to_string(), content_size: 4, tag: "K".to_string() },
-    ///     Section { content: "A one line macro!?".to_string(), content:size: 19, tag: "L".to_string() }
+    ///     Section { content: "A one line macro!?".to_string(), content_size: 19, tag: "L".to_string() }
     /// ];
-    /// let macro = from_sections_unsafe(sections).unwrap();
-    /// 
-    /// assert_eq!(macro.title, "Title");
-    /// assert_eq!(macro.lines.len(), 1);
+    /// let result_macro = Macro::from_sections_unsafe(sections).unwrap();
+    ///
+    /// assert_eq!(result_macro.title, "Title");
+    /// assert_eq!(result_macro.lines.len(), 1);
     /// ```
     pub fn from_sections_unsafe(sections: Vec<Section>) -> Result<Macro, DATError> {
-        if sections[0].tag == "T" {
+        if sections[0].tag != "T" {
             return Err(DATError::InvalidInput("First section was not a Title (T) section."));
         }
         let title = String::from(&sections[0].content);
-        if sections[1].tag == "I" {
+        if sections[1].tag != "I" {
             return Err(DATError::InvalidInput("Second section was not a Icon (I) section."));
         }
         let icon_id = String::from(&sections[1].content);
-        if sections[2].tag == "K" {
+        if sections[2].tag != "K" {
             return Err(DATError::InvalidInput("Third section was not a Key (K) section."));
         }
         let icon_key = String::from(&sections[2].content);
         let mut lines = Vec::<String>::new();
         for line in sections[3..].iter() {
-            if line.tag == "L" {
+            if line.tag != "L" {
                 return Err(DATError::InvalidInput("Non-line (L) section in lines block."));
             }
             lines.push(line.content.to_owned());
@@ -231,40 +232,44 @@ impl Macro {
             icon_key,
             icon_id,
             lines,
-            title
+            title,
         })
     }
 
     /// Validates the macro against the spec expected by the game client.
     /// Returns a [`DATError`] describing the error if validation fails, or [`None`]
     /// if validation is successful.
-    /// 
+    ///
     /// # Macro spec
-    /// 
+    ///
     /// Title: No more than 20 utf-8 characters.
     /// Icon: Icon id and key are a matching pair corresponding to a valid [`MacroIcon`].
     /// Lines: Exactly 15 lines of no more than 180 utf-8 characters.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```rust
-    /// let macro = Macro {
-    ///     icon_id: "0000000",
-    ///     icon_key: "000",
+    /// use libxivdat::xiv_macro::Macro;
+    ///
+    /// let a_macro = Macro {
+    ///     icon_id: "0000000".to_string(),
+    ///     icon_key: "000".to_string(),
     ///     lines: vec![String::new(); 15],
-    ///     title: "Title"
-    /// }
-    /// assert!(macro.validate().is_none());
+    ///     title: "Title".to_string()
+    /// };
+    /// assert!(a_macro.validate().is_none());
     /// ```
-    /// 
+    ///
     /// ```rust
-    /// let macro = Macro {
-    ///     icon_id: "123456",
-    ///     icon_key: "XYZ",
+    /// use libxivdat::xiv_macro::Macro;
+    ///
+    /// let a_macro = Macro {
+    ///     icon_id: "123456".to_string(),
+    ///     icon_key: "XYZ".to_string(),
     ///     lines: vec![String::new(); 1],
-    ///     title: "Looooooooooooooooong Title"
-    /// }
-    /// assert!(macro.validate().is_some());
+    ///     title: "Looooooooooooooooong Title".to_string()
+    /// };
+    /// assert!(a_macro.validate().is_some());
     /// ```
     pub fn validate(&self) -> Option<DATError> {
         if self.title.len() > 20 {
