@@ -31,7 +31,7 @@ const INDEX_CONTENT_SIZE: usize = 0x08;
 /// use libxivdat::dat_type::DATType;
 /// use std::io::Read;
 ///
-/// let mut dat_file = match DATFile::open("./resources/TEST_MACRO.DAT") {
+/// let mut dat_file = match DATFile::open("./resources/TEST_XOR.DAT") {
 ///     Ok(dat_file) => dat_file,
 ///     Err(_) => panic!("Something broke!")
 /// };
@@ -337,7 +337,7 @@ impl DATFile {
     /// use libxivdat::dat_file::DATFile;
     /// use libxivdat::dat_type::DATType;
     ///
-    /// let mut dat_file = DATFile::open("./resources/TEST_MACRO.DAT").unwrap();
+    /// let mut dat_file = DATFile::open("./resources/TEST_XOR.DAT").unwrap();
     /// match dat_file.file_type() {
     ///     DATType::Macro => println!("Macro file!"),
     ///     _ => panic!("Nope!")
@@ -356,7 +356,7 @@ impl DATFile {
     /// ```rust
     /// use libxivdat::dat_file::DATFile;
     ///
-    /// let mut dat_file = DATFile::open("./resources/TEST_MACRO.DAT").unwrap();
+    /// let mut dat_file = DATFile::open("./resources/TEST_XOR.DAT").unwrap();
     /// let header_end_byte = dat_file.header_end_byte();
     /// ```
     pub fn header_end_byte(&self) -> u8 {
@@ -372,7 +372,7 @@ impl DATFile {
     /// ```rust
     /// use libxivdat::dat_file::DATFile;
     ///
-    /// let mut dat_file = DATFile::open("./resources/TEST_MACRO.DAT").unwrap();
+    /// let mut dat_file = DATFile::open("./resources/TEST_XOR.DAT").unwrap();
     /// let header_end_byte = dat_file.max_size();
     /// ```
     pub fn max_size(&self) -> u32 {
@@ -634,7 +634,7 @@ impl DATFile {
 /// use libxivdat::dat_file::check_type;
 /// use libxivdat::dat_type::DATType;
 ///
-/// let dat_type = check_type("./resources/TEST_MACRO.DAT").unwrap();
+/// let dat_type = check_type("./resources/TEST_XOR.DAT").unwrap();
 /// assert_eq!(dat_type, DATType::Macro);
 /// ```
 pub fn check_type<P: AsRef<Path>>(path: P) -> Result<DATType, DATError> {
@@ -790,16 +790,16 @@ mod tests {
     use super::*;
     use std::fs::copy;
     const TEST_PATH: &str = "./resources/TEST.DAT";
-    const TEST_MACRO_PATH: &str = "./resources/TEST_MACRO.DAT";
+    const TEST_XOR_PATH: &str = "./resources/TEST_XOR.DAT";
     const TEST_EMPTY_PATH: &str = "./resources/TEST_EMPTY.DAT";
     const TEST_CONTENTS: &[u8; 5] = b"Boop!";
-    const TEST_MACRO_CONTENTS: &[u8; 6] = b"Macro!";
+    const TEST_XOR_CONTENTS: &[u8; 6] = b"Macro!";
 
     // --- Module Functions
 
     #[test]
     fn test_check_type() -> Result<(), String> {
-        match check_type(TEST_MACRO_PATH) {
+        match check_type(TEST_XOR_PATH) {
             Ok(dat_type) => Ok(assert_eq!(dat_type, DATType::Macro)),
             Err(err) => Err(format!("Read error: {}", err)),
         }
@@ -859,8 +859,8 @@ mod tests {
 
     #[test]
     fn test_read_content_with_mask() -> Result<(), String> {
-        match read_content(TEST_MACRO_PATH) {
-            Ok(content_bytes) => Ok(assert_eq!(&content_bytes, TEST_MACRO_CONTENTS)),
+        match read_content(TEST_XOR_PATH) {
+            Ok(content_bytes) => Ok(assert_eq!(&content_bytes, TEST_XOR_CONTENTS)),
             Err(err) => Err(format!("Read error: {}", err)),
         }
     }
@@ -908,7 +908,7 @@ mod tests {
 
     #[test]
     fn test_datfile_open_detect_type() -> Result<(), String> {
-        match DATFile::open(TEST_MACRO_PATH) {
+        match DATFile::open(TEST_XOR_PATH) {
             Ok(dat_file) => {
                 assert_eq!(dat_file.content_size(), 7);
                 assert_eq!(dat_file.max_size, 8);
@@ -1218,13 +1218,13 @@ mod tests {
 
     #[test]
     fn test_datfile_read_with_mask() -> Result<(), String> {
-        let mut dat_file = match DATFile::open(TEST_MACRO_PATH) {
+        let mut dat_file = match DATFile::open(TEST_XOR_PATH) {
             Ok(dat_file) => dat_file,
             Err(err) => return Err(format!("Open error: {}", err)),
         };
         let mut buf = [0u8; 1];
         match dat_file.read(&mut buf) {
-            Ok(_) => Ok(assert_eq!(buf, TEST_MACRO_CONTENTS[0..1])),
+            Ok(_) => Ok(assert_eq!(buf, TEST_XOR_CONTENTS[0..1])),
             Err(err) => Err(format!("Read error: {}", err)),
         }
     }

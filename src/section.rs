@@ -354,7 +354,9 @@ pub fn get_section_header_contents(bytes: &[u8; SECTION_HEADER_SIZE]) -> Result<
 /// Returns [`DATError::IncorrectType`] if the file appears to be of a [`DATType`]
 /// that does not contain sections.
 ///
-/// If an I/O error occurs while writing to the file, a [`DATError::FileIO`]
+/// Returns [`DATError::EndOfFile`] if there is not a full section remaining in the file.
+///
+/// If an I/O error occurs while reading the file, a [`DATError::FileIO`]
 /// error will be returned wrapping the underlying FS error.
 ///
 /// If the tag or content is not valid utf8 text, a [`DATError::BadEncoding`]
@@ -403,7 +405,7 @@ pub fn read_section(dat_file: &mut DATFile) -> Result<Section, DATError> {
 /// Returns a [`DATError::BadHeader`](crate::dat_error::DATError::BadHeader) if the specified file does not
 /// have a valid DAT header.
 ///
-/// If an I/O error occurs while writing to the file, a [`DATError::FileIO`](crate::dat_error::DATError::FileIO)
+/// If an I/O error occurs while reading the file, a [`DATError::FileIO`](crate::dat_error::DATError::FileIO)
 /// error will be returned wrapping the underlying FS error.
 ///
 /// # Examples
@@ -435,7 +437,9 @@ pub fn read_section_content<P: AsRef<Path>>(path: P) -> Result<Vec<Section>, DAT
 ///
 /// # Errors
 ///
-/// If an I/O error occurs while writing to the file, a [`DATError::FileIO`]
+/// Returns [`DATError::EndOfFile`] if there is not a full section remaining in the file.
+///
+/// If an I/O error occurs while reading the file, a [`DATError::FileIO`]
 /// error will be returned wrapping the underlying FS error.
 ///
 /// If the tag or content is not valid utf8 text, a [`DATError::BadEncoding`]
@@ -457,11 +461,24 @@ pub fn read_section_content<P: AsRef<Path>>(path: P) -> Result<Vec<Section>, DAT
 pub fn read_section_unsafe(dat_file: &mut DATFile) -> Result<Section, DATError> {
     // Read section header.
     let mut sec_header_bytes = [0u8; SECTION_HEADER_SIZE];
-    dat_file.read_exact(&mut sec_header_bytes)?;
+    // Manually wrap EOF into DATError EOF
+    match dat_file.read_exact(&mut sec_header_bytes) {
+        Ok(_) => (),
+        Err(err) if err.kind() == std::io::ErrorKind::UnexpectedEof => {
+            return Err(DATError::EndOfFile("Found EOF looking for next section."))
+        }
+        Err(err) => return Err(DATError::from(err)),
+    };
     let (tag, content_size) = get_section_header_contents(&sec_header_bytes)?;
     // Read section content
     let mut sec_content_bytes = vec![0u8; usize::from(content_size - 1)];
-    dat_file.read_exact(&mut sec_content_bytes)?;
+    match dat_file.read_exact(&mut sec_content_bytes) {
+        Ok(_) => (),
+        Err(err) if err.kind() == std::io::ErrorKind::UnexpectedEof => {
+            return Err(DATError::EndOfFile("Found EOF reading next section."))
+        }
+        Err(err) => return Err(DATError::from(err)),
+    };
     // Skip null byte. Doing it this way avoids having to re-slice content bytes.
     dat_file.seek(SeekFrom::Current(1))?;
     Ok(Section {
@@ -489,7 +506,7 @@ pub fn read_section_unsafe(dat_file: &mut DATFile) -> Result<Section, DATError> 
 /// Returns a [`DATError::BadHeader`](crate::dat_error::DATError::BadHeader) if the specified file does not
 /// have a valid DAT header.
 ///
-/// If an I/O error occurs while writing to the file, a [`DATError::FileIO`](crate::dat_error::DATError::FileIO)
+/// If an I/O error occurs while reading the file, a [`DATError::FileIO`](crate::dat_error::DATError::FileIO)
 /// error will be returned wrapping the underlying FS error.
 ///
 /// # Examples
@@ -642,6 +659,22 @@ mod tests {
             Ok(_) => Err("No error returned.".to_owned()),
             Err(err) => match err {
                 DATError::IncorrectType(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+        }
+    }
+
+    #[test]
+    fn test_read_section_error_eof() -> Result<(), String> {
+        let mut dat_file = match DATFile::open(TEST_FILE_PATH) {
+            Ok(dat_file) => dat_file,
+            Err(err) => return Err(format!("Error opening file: {}", err)),
+        };
+        dat_file.seek(SeekFrom::End(-1)).unwrap();
+        match read_section(&mut dat_file) {
+            Ok(_) => Err("No error returned.".to_owned()),
+            Err(err) => match err {
+                DATError::EndOfFile(_) => Ok(()),
                 _ => Err(format!("Incorrect error: {}", err)),
             },
         }
