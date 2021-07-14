@@ -6,22 +6,22 @@ pub mod icon;
 use icon::*;
 
 use crate::dat_error::DATError;
-use crate::dat_file::{DATFile,check_type,write_content};
+use crate::dat_file::{check_type, DATFile};
 use crate::dat_type::DATType;
-use crate::section::{Section,SectionData,as_section,as_section_vec,read_section,read_section_content};
+use crate::section::{as_section_vec, read_section, read_section_content, Section, SectionData};
 use std::path::Path;
 
 /// The [`Section`](crate::section::Section) tag for macro titles.
-pub const SECTION_TAG_TITLE: &'static str = "T";
+pub const SECTION_TAG_TITLE: &str = "T";
 
 /// The [`Section`](crate::section::Section) tag for macro icon ids.
-pub const SECTION_TAG_ICON: &'static str = "I";
+pub const SECTION_TAG_ICON: &str = "I";
 
 /// The [`Section`](crate::section::Section) tag for macro icon keys.
-pub const SECTION_TAG_KEY: &'static str = "K";
+pub const SECTION_TAG_KEY: &str = "K";
 
 /// The [`Section`](crate::section::Section) tag for macro icon lines.
-pub const SECTION_TAG_LINE: &'static str = "L";
+pub const SECTION_TAG_LINE: &str = "L";
 
 /// Resource definition for a Final Fantasy XIV macro.
 /// [`Macro`] owns its constituent data and is returned from helper functions like [`read_macro()`].
@@ -196,7 +196,7 @@ impl Macro {
     /// assert_eq!(a_macro.icon_id, "00102FF");
     /// assert_eq!(a_macro.icon_key, "037");
     /// ```
-    pub fn change_icon(&mut self, icon: MacroIcon) -> () {
+    pub fn change_icon(&mut self, icon: MacroIcon) {
         let (key, id) = macro_icon_to_key_and_id(&icon);
         self.icon_key = key.to_owned();
         self.icon_id = id.to_owned();
@@ -258,7 +258,7 @@ impl Macro {
     /// strictly enforce this pattern, and will read lines until the next title.
     ///
     /// This function does not check that the actual section content is valid. To perform validity checks,
-    /// use [`from_sections()`](from_sections).
+    /// use [`from_sections()`](Self::from_sections).
     ///
     /// # Errors
     ///
@@ -536,7 +536,7 @@ impl<'a> MacroData<'a> {
     /// assert_eq!(a_macro.icon_id, "00102FF");
     /// assert_eq!(a_macro.icon_key, "037");
     /// ```
-    pub fn change_icon(&mut self, icon: &'a MacroIcon) -> () {
+    pub fn change_icon(&mut self, icon: &'a MacroIcon) {
         let (key, id) = macro_icon_to_key_and_id(&icon);
         self.icon_key = key;
         self.icon_id = id;
@@ -545,7 +545,7 @@ impl<'a> MacroData<'a> {
     /// Builds a [`MacroData`] from a [`Vec`] of [`SectionData`](crate::section::SectionData).
     /// The expected pattern of section tags is "T" (Title), "I" (Icon), "K", (Key), and repeating "L"s (Lines).
     /// Valid macros always contain exactly 15 lines, even if their contents are blank. This function checks
-    /// the data for validity, unlick [`from_sections_unsafe()`](Self::from_sections_unsafe)
+    /// the data for validity, unlick [`from_section_data_unsafe()`](Self::from_section_data_unsafe)
     ///
     /// This is equivalent to calling [`from_section_data_unsafe()`](Self::from_section_data_unsafe) followed by
     /// [`validate()`](Self::validate) on the resulting [`Macro`].
@@ -579,12 +579,12 @@ impl<'a> MacroData<'a> {
     /// for line in std::iter::repeat("").take(15) {
     ///     sections.push(SectionData { content: line, content_size: 1, tag: "L" });
     /// }
-    /// let result_macro = MacroData::from_sections(sections).unwrap();
+    /// let result_macro = MacroData::from_section_data(sections).unwrap();
     ///
     /// assert_eq!(result_macro.title, "Title");
     /// ```
-    pub fn from_sections(sections: Vec<SectionData>) -> Result<MacroData, DATError> {
-        let res_macro = Self::from_sections_unsafe(sections)?;
+    pub fn from_section_data(sections: Vec<SectionData>) -> Result<MacroData, DATError> {
+        let res_macro = Self::from_section_data_unsafe(sections)?;
         if let Some(validation_err) = res_macro.validate() {
             Err(validation_err)
         } else {
@@ -598,7 +598,7 @@ impl<'a> MacroData<'a> {
     /// strictly enforce this pattern, and will read lines until the next title.
     ///
     /// This function does not check that the actual section content is valid. To perform validity checks,
-    /// use [`from_sections()`](from_sections).
+    /// use [`from_section_data()`](Self::from_section_data).
     ///
     /// # Errors
     ///
@@ -616,12 +616,12 @@ impl<'a> MacroData<'a> {
     ///     SectionData { content: "000", content_size: 4, tag: "K" },
     ///     SectionData { content: "A one line macro!?", content_size: 19, tag: "L" }
     /// ];
-    /// let result_macro = MacroData::from_sections_unsafe(sections).unwrap();
+    /// let result_macro = MacroData::from_section_data_unsafe(sections).unwrap();
     ///
     /// assert_eq!(result_macro.title, "Title");
     /// assert_eq!(result_macro.lines.len(), 1);
     /// ```
-    pub fn from_sections_unsafe(sections: Vec<SectionData>) -> Result<MacroData, DATError> {
+    pub fn from_section_data_unsafe(sections: Vec<SectionData>) -> Result<MacroData, DATError> {
         if sections.len() < 4 {
             return Err(DATError::InvalidInput("Macros require a minimum of 4 sections."));
         }
@@ -716,8 +716,8 @@ impl<'a> MacroData<'a> {
             }
         }
         let res_macro = MacroData {
-            icon_id: icon_id,
-            icon_key: icon_key,
+            icon_id,
+            icon_key,
             lines: padded_lines,
             title,
         };
@@ -784,10 +784,84 @@ impl<'a> MacroData<'a> {
     }
 }
 
+/// Interprets a byte slice as [`MacroData`].
+///
+/// # Errors
+///
+/// Returns a [`DATError::ContentOverflow`] or [`DATError::ContentUnderflow`] if
+/// a macro section has a length that does not match the length specified in its header.
+///
+/// If a macro section does not have valid utf-8 content, a [`DATError::BadEncoding`]
+/// error will be returned.
+///
+/// # Examples
+/// ```rust
+/// use libxivdat::dat_file::DATFile;
+/// use libxivdat::xiv_macro::{as_macro,read_macro};
+/// use libxivdat::xiv_macro::icon::MacroIcon;
+///
+/// let mut dat_file = DATFile::open("./resources/TEST_MACRO.DAT").unwrap();
+/// let a_macro = read_macro(&mut dat_file).unwrap();
+/// let macro_bytes = a_macro.as_bytes().unwrap();
+/// let macro_data = as_macro(&macro_bytes).unwrap();
+///
+/// assert_eq!(macro_data.title, "0");
+/// assert_eq!(macro_data.lines[0], "DefaultIcon");
+/// assert_eq!(macro_data.get_icon().unwrap(), MacroIcon::DefaultIcon);
+/// ```
+pub fn as_macro(bytes: &[u8]) -> Result<MacroData, DATError> {
+    let sec_vec = as_section_vec(bytes)?;
+    MacroData::from_section_data_unsafe(sec_vec)
+}
+
+/// Interprets a byte slice as a block of [`MacroData`], returning a [`Vec`] of them.
+///
+/// # Errors
+///
+/// Returns a [`DATError::ContentOverflow`] or [`DATError::ContentUnderflow`] if
+/// a macro section has a length that does not match the length specified in its header.
+///
+/// If a macro section does not have valid utf-8 content, a [`DATError::BadEncoding`]
+/// error will be returned.
+///
+/// # Examples
+/// ```rust
+/// use libxivdat::dat_file::read_content;
+/// use libxivdat::xiv_macro::{as_macro_vec,read_macro_content};
+/// use libxivdat::xiv_macro::icon::MacroIcon;
+///
+/// let content_bytes = read_content("./resources/TEST_MACRO.DAT").unwrap();
+/// let macro_data_vec = as_macro_vec(&content_bytes).unwrap();
+///
+/// assert_eq!(macro_data_vec[0].title, "0");
+/// assert_eq!(macro_data_vec[0].lines[0], "DefaultIcon");
+/// assert_eq!(macro_data_vec[0].get_icon().unwrap(), MacroIcon::DefaultIcon);
+///
+/// assert_eq!(macro_data_vec[1].title, "1");
+/// assert_eq!(macro_data_vec[1].lines[0], "DPS1");
+/// assert_eq!(macro_data_vec[1].get_icon().unwrap(), MacroIcon::DPS1);
+/// ```
+pub fn as_macro_vec(bytes: &[u8]) -> Result<Vec<MacroData>, DATError> {
+    let sections = as_section_vec(bytes)?;
+    let mut macro_vec = Vec::<MacroData>::new();
+    let mut sec_vec = Vec::<SectionData>::new();
+    for next_section in sections.into_iter() {
+        // Push a new macro on every title
+        if next_section.tag == SECTION_TAG_TITLE {
+            if !sec_vec.is_empty() {
+                macro_vec.push(MacroData::from_section_data_unsafe(sec_vec)?);
+            }
+            sec_vec = Vec::<SectionData>::new();
+        }
+        sec_vec.push(next_section);
+    }
+    Ok(macro_vec)
+}
+
 /// Reads the next [`Macro`] from a [`DATFile`](crate::dat_file::DATFile).
 ///
 /// # Errors
-/// 
+///
 /// Returns [`DATError::IncorrectType`] if the file appears to be of a type other than
 /// [`DATType::Macro`].
 ///
@@ -812,9 +886,10 @@ impl<'a> MacroData<'a> {
 /// ```
 pub fn read_macro(dat_file: &mut DATFile) -> Result<Macro, DATError> {
     if dat_file.file_type() != DATType::Macro {
-        Err(DATError::IncorrectType("Attempted to read a macro from a non-macro file."))
-    }
-    else {
+        Err(DATError::IncorrectType(
+            "Attempted to read a macro from a non-macro file.",
+        ))
+    } else {
         Ok(read_macro_unsafe(dat_file)?)
     }
 }
@@ -826,7 +901,7 @@ pub fn read_macro(dat_file: &mut DATFile) -> Result<Macro, DATError> {
 /// but this function will attempt to read files of other sizes.
 ///
 /// # Errors
-/// 
+///
 /// Returns [`DATError::IncorrectType`] if the file appears to be of a type other than
 /// [`DATType::Macro`].
 ///
@@ -860,9 +935,10 @@ pub fn read_macro(dat_file: &mut DATFile) -> Result<Macro, DATError> {
 /// ```
 pub fn read_macro_content<P: AsRef<Path>>(path: P) -> Result<Vec<Macro>, DATError> {
     if check_type(&path)? != DATType::Macro {
-        Err(DATError::IncorrectType("Attempted to read a macro from a non-macro file."))
-    }
-    else {
+        Err(DATError::IncorrectType(
+            "Attempted to read a macro from a non-macro file.",
+        ))
+    } else {
         Ok(read_macro_content_unsafe(path)?)
     }
 }
@@ -899,15 +975,15 @@ pub fn read_macro_unsafe(dat_file: &mut DATFile) -> Result<Macro, DATError> {
             Ok(next_section) => next_section,
             Err(err) => match err {
                 DATError::EndOfFile(_) => break,
-                _ => return Err(err)
-            }
+                _ => return Err(err),
+            },
         };
         if next_section.tag == SECTION_TAG_TITLE {
             break;
         }
         sec_vec.push(next_section);
     }
-    Ok(Macro::from_sections_unsafe(sec_vec)?)
+    Macro::from_sections_unsafe(sec_vec)
 }
 
 /// Reads all [`Macros`](Macro) from a specified DAT file, returning a [`Vec`] of them.
@@ -954,7 +1030,7 @@ pub fn read_macro_content_unsafe<P: AsRef<Path>>(path: P) -> Result<Vec<Macro>, 
     for next_section in sections.into_iter() {
         // Push a new macro on every title
         if next_section.tag == SECTION_TAG_TITLE {
-            if sec_vec.len() > 0 {
+            if !sec_vec.is_empty() {
                 macro_vec.push(Macro::from_sections_unsafe(sec_vec)?);
             }
             sec_vec = Vec::<Section>::new();
