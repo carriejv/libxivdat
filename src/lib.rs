@@ -152,7 +152,7 @@ pub mod section;
 /// for working with files on disk and [`MacroData`](`crate::xiv_macro::MacroData),
 /// [`as_macro()`](crate::xiv_macro::as_macro`), and [`as_macro_vec()`](crate::xiv_macro::as_macro_vec)
 /// for working with pre-allocated byte arrays and [`SectionData](crate::section::SectionData).
-/// 
+///
 /// Enabled by feature `macro`.
 ///
 /// # Examples
