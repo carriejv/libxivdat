@@ -7,7 +7,7 @@ pub trait AsBytes {
     ///
     /// # Errors
     ///
-    /// Returns a [`DATError::ContentOverflow`] if the content of a data block
+    /// Returns a [`DATError::Overflow`] if the content of a data block
     /// would exceed the maximum allowable length.
     ///
     /// # Examples

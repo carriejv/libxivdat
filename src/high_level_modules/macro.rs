@@ -12,6 +12,9 @@ use crate::high_level::{AsBytes, Validate};
 use crate::section::{as_section_vec, read_section, read_section_content, Section, SectionData};
 use std::path::Path;
 
+/// The number of [`Macro`] items expected in a valid macro file.
+pub const EXPECTED_ITEM_COUNT: usize = 100;
+
 /// The [`Section`](crate::section::Section) tag for macro titles.
 pub const SECTION_TAG_TITLE: &str = "T";
 
@@ -122,20 +125,20 @@ impl AsBytes for Macro {
 impl Validate for Macro {
     fn validate(&self) -> Option<DATError> {
         if self.title.len() > 20 {
-            return Some(DATError::ContentOverflow("Title is longer than 20 characters."));
+            return Some(DATError::Overflow("Title is longer than 20 characters."));
         }
         if macro_icon_from_key_and_id(&self.icon_key, &self.icon_id).is_none() {
             return Some(DATError::InvalidInput("Macro icon is invalid."));
         }
         if self.lines.len() < 15 {
-            return Some(DATError::ContentUnderflow("Macro has fewer than 15 lines."));
+            return Some(DATError::Underflow("Macro has fewer than 15 lines."));
         }
         if self.lines.len() > 15 {
-            return Some(DATError::ContentOverflow("Macro has more than 15 lines."));
+            return Some(DATError::Overflow("Macro has more than 15 lines."));
         }
         for line in self.lines.iter() {
             if line.len() > 180 {
-                return Some(DATError::ContentOverflow("Line is longer than 180 characters."));
+                return Some(DATError::Overflow("Line is longer than 180 characters."));
             }
         }
         None
@@ -168,20 +171,20 @@ impl AsBytes for MacroData<'_> {
 impl Validate for MacroData<'_> {
     fn validate(&self) -> Option<DATError> {
         if self.title.len() > 20 {
-            return Some(DATError::ContentOverflow("Title is longer than 20 characters."));
+            return Some(DATError::Overflow("Title is longer than 20 characters."));
         }
         if macro_icon_from_key_and_id(&self.icon_key, &self.icon_id).is_none() {
             return Some(DATError::InvalidInput("Macro icon is invalid."));
         }
         if self.lines.len() < 15 {
-            return Some(DATError::ContentUnderflow("Macro has fewer than 15 lines."));
+            return Some(DATError::Underflow("Macro has fewer than 15 lines."));
         }
         if self.lines.len() > 15 {
-            return Some(DATError::ContentOverflow("Macro has more than 15 lines."));
+            return Some(DATError::Overflow("Macro has more than 15 lines."));
         }
         for line in self.lines.iter() {
             if line.len() > 180 {
-                return Some(DATError::ContentOverflow("Line is longer than 180 characters."));
+                return Some(DATError::Overflow("Line is longer than 180 characters."));
             }
         }
         None
@@ -194,7 +197,7 @@ impl Macro {
     ///
     /// # Errors
     ///
-    /// Returns a [`DATError::ContentOverflow`] if the content of a section would exceed
+    /// Returns a [`DATError::Overflow`] if the content of a section would exceed
     /// the maximum allowable length. ([`u16::MAX`]` - 1`)
     ///
     /// # Examples
@@ -272,9 +275,9 @@ impl Macro {
     /// Returns [`DATError::InvalidInput`] if the sections are not provided in the order described above or
     /// the icon id and key specified are not a valid pair.
     ///
-    /// Returns [`DATError::ContentOverflow`] if the title or any line is too long, or if there are too many lines.
+    /// Returns [`DATError::Overflow`] if the title or any line is too long, or if there are too many lines.
     ///
-    /// Returns [`DATError::ContentUnderflow`] if there are too few lines.
+    /// Returns [`DATError::Underflow`] if there are too few lines.
     ///
     /// # Examples
     ///
@@ -394,7 +397,7 @@ impl Macro {
     ///
     /// # Errors
     ///
-    /// Returns [`DATError::ContentOverflow`] if the title or content are too long, or if there
+    /// Returns [`DATError::Overflow`] if the title or content are too long, or if there
     /// are too many lines.
     ///
     /// # Examples
@@ -440,7 +443,7 @@ impl<'a> MacroData<'a> {
     ///
     /// # Errors
     ///
-    /// Returns a [`DATError::ContentOverflow`] if the content of a section would exceed
+    /// Returns a [`DATError::Overflow`] if the content of a section would exceed
     /// the maximum allowable length. ([`u16::MAX`]` - 1`)
     ///
     /// # Examples
@@ -518,9 +521,9 @@ impl<'a> MacroData<'a> {
     /// Returns [`DATError::InvalidInput`] if the sections are not provided in the order described above or
     /// the icon id and key specified are not a valid pair.
     ///
-    /// Returns [`DATError::ContentOverflow`] if the title or any line is too long, or if there are too many lines.
+    /// Returns [`DATError::Overflow`] if the title or any line is too long, or if there are too many lines.
     ///
-    /// Returns [`DATError::ContentUnderflow`] if there are too few lines.
+    /// Returns [`DATError::Underflow`] if there are too few lines.
     ///
     /// # Examples
     ///
@@ -645,7 +648,7 @@ impl<'a> MacroData<'a> {
     ///
     /// # Errors
     ///
-    /// Returns [`DATError::ContentOverflow`] if the title or content are too long, or if there
+    /// Returns [`DATError::Overflow`] if the title or content are too long, or if there
     /// are too many lines.
     ///
     /// # Examples
@@ -689,7 +692,7 @@ impl<'a> MacroData<'a> {
 ///
 /// # Errors
 ///
-/// Returns a [`DATError::ContentOverflow`] or [`DATError::ContentUnderflow`] if
+/// Returns a [`DATError::Overflow`] or [`DATError::Underflow`] if
 /// a macro section has a length that does not match the length specified in its header.
 ///
 /// If a macro section does not have valid utf-8 content, a [`DATError::BadEncoding`]
@@ -699,7 +702,7 @@ impl<'a> MacroData<'a> {
 /// ```rust
 /// use libxivdat::dat_file::DATFile;
 /// use libxivdat::high_level::AsBytes;
-/// use libxivdat::xiv_macro::{as_macro,read_macro};
+/// use libxivdat::xiv_macro::{as_macro, read_macro};
 /// use libxivdat::xiv_macro::icon::MacroIcon;
 ///
 /// let mut dat_file = DATFile::open("./resources/TEST_MACRO.DAT").unwrap();
@@ -720,7 +723,7 @@ pub fn as_macro(bytes: &[u8]) -> Result<MacroData, DATError> {
 ///
 /// # Errors
 ///
-/// Returns a [`DATError::ContentOverflow`] or [`DATError::ContentUnderflow`] if
+/// Returns a [`DATError::Overflow`] or [`DATError::Underflow`] if
 /// a macro section has a length that does not match the length specified in its header.
 ///
 /// If a macro section does not have valid utf-8 content, a [`DATError::BadEncoding`]
@@ -729,7 +732,7 @@ pub fn as_macro(bytes: &[u8]) -> Result<MacroData, DATError> {
 /// # Examples
 /// ```rust
 /// use libxivdat::dat_file::read_content;
-/// use libxivdat::xiv_macro::{as_macro_vec,read_macro_content};
+/// use libxivdat::xiv_macro::{as_macro_vec, read_macro_content};
 /// use libxivdat::xiv_macro::icon::MacroIcon;
 ///
 /// let content_bytes = read_content("./resources/TEST_MACRO.DAT").unwrap();
@@ -757,7 +760,80 @@ pub fn as_macro_vec(bytes: &[u8]) -> Result<Vec<MacroData>, DATError> {
         }
         sec_vec.push(next_section);
     }
+    // Push last macro
+    if !sec_vec.is_empty() {
+        macro_vec.push(MacroData::from_section_data_unsafe(sec_vec)?);
+    }
     Ok(macro_vec)
+}
+
+/// Returns a byte vector representing a slice of [`MacroData`]. This can then be written back
+/// to a a file using [`write_content()`](crate::dat_file::write_content). This function validates
+/// each macro. Additionally, the slice will be padded with empty macros to 100 ([`EXPECTED_ITEM_COUNT`])
+/// items if it is shorter.
+///
+/// # Errors
+///
+/// Returns [`DATError::Overflow`] if a macro data section would exceed the maximum possible
+/// size for that section type, or if the slice contains more than [`EXPECTED_ITEM_COUNT`] macros.
+///
+/// Returns any validation errors returned by [`validate()`](Macro::validate).
+///
+/// # Examples
+///
+/// ```rust
+/// use libxivdat::xiv_macro::{as_writeable_bytes, MacroData};
+/// use libxivdat::xiv_macro::icon::MacroIcon;
+///
+/// let macro_vec = vec![MacroData::new("Title", vec!["line"; 15], &MacroIcon::DefaultIcon).unwrap(); 100];
+/// let macro_bytes = as_writeable_bytes(&macro_vec);
+/// assert!(macro_bytes.is_ok());
+/// ```
+pub fn as_writeable_bytes(macros: &[MacroData]) -> Result<Vec<u8>, DATError> {
+    let mut padded_macro_vec = macros.to_vec();
+    let macros_len = macros.len();
+    if macros_len > EXPECTED_ITEM_COUNT {
+        return Err(DATError::Overflow(
+            "A valid macro file cannot contain more than 100 macros.",
+        ));
+    }
+    if macros_len < EXPECTED_ITEM_COUNT {
+        let mut padding = vec![MacroData::new("", vec![""; 15], &MacroIcon::NoIcon)?; EXPECTED_ITEM_COUNT - macros_len];
+        padded_macro_vec.append(&mut padding);
+    }
+    for macro_item in padded_macro_vec.iter() {
+        if let Some(err) = macro_item.validate() {
+            return Err(err);
+        }
+    }
+    as_writeable_bytes_unsafe(&padded_macro_vec)
+}
+
+/// Returns a byte vector representing a slice of [`MacroData`]. This can then be written back
+/// to a a file using [`write_content()`](crate::dat_file::write_content).
+///
+/// # Errors
+///
+/// Returns [`DATError::Overflow`] if a macro data section would exceed the maximum possible
+/// size for that section type.
+///
+/// # Examples
+///
+/// ```rust
+/// use libxivdat::xiv_macro::{as_writeable_bytes_unsafe, MacroData};
+/// use libxivdat::xiv_macro::icon::MacroIcon;
+///
+/// let macro_vec = vec![MacroData::new("Title", vec!["line"; 15], &MacroIcon::DefaultIcon).unwrap(); 100];
+/// let macro_bytes = as_writeable_bytes_unsafe(&macro_vec);
+/// assert!(macro_bytes.is_ok());
+/// ```
+pub fn as_writeable_bytes_unsafe(macros: &[MacroData]) -> Result<Vec<u8>, DATError> {
+    let mut res_vec = Vec::<u8>::new();
+    for macro_item in macros.iter() {
+        let mut macro_bytes = macro_item.as_bytes()?;
+        res_vec.append(&mut macro_bytes);
+    }
+    Ok(res_vec)
 }
 
 /// Reads the next [`Macro`] from a [`DATFile`](crate::dat_file::DATFile).
@@ -807,8 +883,8 @@ pub fn read_macro(dat_file: &mut DATFile) -> Result<Macro, DATError> {
 /// Returns [`DATError::IncorrectType`] if the file appears to be of a type other than
 /// [`DATType::Macro`].
 ///
-/// Returns a [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow) or
-/// [`DATError::ContentUnderflow`](crate::dat_error::DATError::ContentUnderflow) if a macro section content block
+/// Returns a [`DATError::Overflow`](crate::dat_error::DATError::Overflow) or
+/// [`DATError::Underflow`](crate::dat_error::DATError::Underflow) if a macro section content block
 /// does not match the expected length specified in the section header.
 ///
 /// Returns a [`DATError::BadEncoding`](crate::dat_error::DATError::BadEncoding) if a macro title or line does not
@@ -897,8 +973,8 @@ pub fn read_macro_unsafe(dat_file: &mut DATFile) -> Result<Macro, DATError> {
 ///
 /// # Errors
 ///
-/// Returns a [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow) or
-/// [`DATError::ContentUnderflow`](crate::dat_error::DATError::ContentUnderflow) if a macro section content block
+/// Returns a [`DATError::Overflow`](crate::dat_error::DATError::Overflow) or
+/// [`DATError::Underflow`](crate::dat_error::DATError::Underflow) if a macro section content block
 /// does not match the expected length specified in the section header.
 ///
 /// Returns a [`DATError::BadEncoding`](crate::dat_error::DATError::BadEncoding) if a macro title or line does not
@@ -939,5 +1015,509 @@ pub fn read_macro_content_unsafe<P: AsRef<Path>>(path: P) -> Result<Vec<Macro>, 
         }
         sec_vec.push(next_section);
     }
+    // Push last macro
+    if !sec_vec.is_empty() {
+        macro_vec.push(Macro::from_sections_unsafe(sec_vec)?);
+    }
     Ok(macro_vec)
+}
+
+/// Returns a byte vector representing a slice of [`Macros`](Macro). This can then be written back
+/// to a a file using [`write_content()`](crate::dat_file::write_content). This function validates
+/// each macro. Additionally, the slice will be padded with empty macros to 100 ([`EXPECTED_ITEM_COUNT`])
+/// items if it is shorter.
+///
+/// # Errors
+///
+/// Returns [`DATError::Overflow`] if a macro data section would exceed the maximum possible
+/// size for that section type, or if the slice contains more than [`EXPECTED_ITEM_COUNT`] macros.
+///
+/// Returns any validation errors returned by [`validate()`](Macro::validate).
+///
+/// # Examples
+///
+/// ```rust
+/// use libxivdat::xiv_macro::{to_writeable_bytes, Macro};
+/// use libxivdat::xiv_macro::icon::MacroIcon;
+///
+/// let macro_vec = vec![Macro::new("Title".to_owned(), vec!["line".to_owned(); 15], MacroIcon::DefaultIcon).unwrap(); 100];
+/// let macro_bytes = to_writeable_bytes(&macro_vec);
+/// assert!(macro_bytes.is_ok());
+/// ```
+pub fn to_writeable_bytes(macros: &[Macro]) -> Result<Vec<u8>, DATError> {
+    let mut padded_macro_vec = macros.to_vec();
+    let macros_len = macros.len();
+    if macros_len > EXPECTED_ITEM_COUNT {
+        return Err(DATError::Overflow(
+            "A valid macro file cannot contain more than 100 macros.",
+        ));
+    }
+    if macros_len < EXPECTED_ITEM_COUNT {
+        let mut padding = vec![
+            Macro::new("".to_owned(), vec!["".to_owned(); 15], MacroIcon::NoIcon)?;
+            EXPECTED_ITEM_COUNT - macros_len
+        ];
+        padded_macro_vec.append(&mut padding);
+    }
+    for macro_item in padded_macro_vec.iter() {
+        if let Some(err) = macro_item.validate() {
+            return Err(err);
+        }
+    }
+    to_writeable_bytes_unsafe(&padded_macro_vec)
+}
+
+/// Returns a byte vector representing a slice of [`Macros`](Macro). This can then be written back
+/// to a a file using [`write_content()`](crate::dat_file::write_content).
+///
+/// # Errors
+///
+/// Returns [`DATError::Overflow`] if a macro data section would exceed the maximum possible
+/// size for that section type.
+///
+/// # Examples
+///
+/// ```rust
+/// use libxivdat::xiv_macro::{to_writeable_bytes_unsafe, Macro};
+/// use libxivdat::xiv_macro::icon::MacroIcon;
+///
+/// let macro_vec = vec![Macro::new("Title".to_owned(), vec!["line".to_owned(); 15], MacroIcon::DefaultIcon).unwrap(); 100];
+/// let macro_bytes = to_writeable_bytes_unsafe(&macro_vec);
+/// assert!(macro_bytes.is_ok());
+/// ```
+pub fn to_writeable_bytes_unsafe(macros: &[Macro]) -> Result<Vec<u8>, DATError> {
+    let mut res_vec = Vec::<u8>::new();
+    for macro_item in macros.iter() {
+        let mut macro_bytes = macro_item.as_bytes()?;
+        res_vec.append(&mut macro_bytes);
+    }
+    Ok(res_vec)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dat_file::read_content;
+
+    const TEST_FILE_PATH: &str = "./resources/TEST_MACRO.DAT";
+
+    // --- Module Functions
+    #[test]
+    fn test_as_macro() -> Result<(), String> {
+        let mut dat_file = match DATFile::open(TEST_FILE_PATH) {
+            Ok(dat_file) => dat_file,
+            Err(err) => return Err(format!("Error opening file: {}", err)),
+        };
+        let a_macro = match read_macro(&mut dat_file) {
+            Ok(a_macro) => a_macro,
+            Err(err) => return Err(format!("Error reading test macro: {}", err)),
+        };
+        let macro_bytes = match a_macro.as_bytes() {
+            Ok(macro_bytes) => macro_bytes,
+            Err(err) => return Err(format!("Error converting test macro to bytes: {}", err)),
+        };
+        match as_macro(&macro_bytes) {
+            Ok(macro_data) => {
+                assert_eq!(macro_data.title, "0");
+                assert_eq!(macro_data.lines[0], "DefaultIcon");
+                assert_eq!(macro_data.get_icon().unwrap(), MacroIcon::DefaultIcon);
+                Ok(())
+            }
+            Err(err) => Err(format!("Error: {}", err)),
+        }
+    }
+
+    #[test]
+    fn test_as_macro_vec() -> Result<(), String> {
+        let macro_bytes = match read_content(TEST_FILE_PATH) {
+            Ok(macro_bytes) => macro_bytes,
+            Err(err) => return Err(format!("Error opening file: {}", err)),
+        };
+        match as_macro_vec(&macro_bytes) {
+            Ok(macro_data) => {
+                assert_eq!(macro_data[0].title, "0");
+                assert_eq!(macro_data[0].lines[0], "DefaultIcon");
+                assert_eq!(macro_data[0].get_icon().unwrap(), MacroIcon::DefaultIcon);
+                assert_eq!(macro_data.len(), EXPECTED_ITEM_COUNT);
+                Ok(())
+            }
+            Err(err) => Err(format!("Error: {}", err)),
+        }
+    }
+
+    #[test]
+    fn test_as_writeable_bytes() -> Result<(), String> {
+        let macro_bytes = match read_content(TEST_FILE_PATH) {
+            Ok(macro_bytes) => macro_bytes,
+            Err(err) => return Err(format!("Error opening file: {}", err)),
+        };
+        let macro_vec = match as_macro_vec(&macro_bytes) {
+            Ok(macro_vec) => macro_vec,
+            Err(err) => return Err(format!("Error vectorizing macros: {}", err)),
+        };
+        match as_writeable_bytes(&macro_vec) {
+            Ok(bytes) => Ok(assert_eq!(bytes, macro_bytes)),
+            Err(err) => Err(format!("Error: {}", err)),
+        }
+    }
+
+    #[test]
+    fn test_as_writeable_bytes_padding() -> Result<(), String> {
+        let macro_bytes = match read_content(TEST_FILE_PATH) {
+            Ok(macro_bytes) => macro_bytes,
+            Err(err) => return Err(format!("Error opening file: {}", err)),
+        };
+        let macro_vec = match as_macro_vec(&macro_bytes) {
+            Ok(macro_vec) => macro_vec,
+            Err(err) => return Err(format!("Error vectorizing macros: {}", err)),
+        };
+        let bytes = match as_writeable_bytes(&macro_vec[..50]) {
+            Ok(bytes) => bytes,
+            Err(err) => return Err(format!("Error converting to bytes: {}", err)),
+        };
+        match as_macro_vec(&bytes) {
+            Ok(output_vec) => Ok(assert_eq!(output_vec.len(), EXPECTED_ITEM_COUNT)),
+            Err(err) => Err(format!("Error: {}", err)),
+        }
+    }
+
+    #[test]
+    fn test_as_writeable_bytes_error_count() -> Result<(), String> {
+        let macro_bytes = match read_content(TEST_FILE_PATH) {
+            Ok(macro_bytes) => macro_bytes,
+            Err(err) => return Err(format!("Error opening file: {}", err)),
+        };
+        let mut macro_vec = match as_macro_vec(&macro_bytes) {
+            Ok(macro_vec) => macro_vec,
+            Err(err) => return Err(format!("Error vectorizing macros: {}", err)),
+        };
+        macro_vec.push(MacroData::new("", vec![""; 15], &MacroIcon::NoIcon).unwrap());
+        match as_writeable_bytes(&macro_vec) {
+            Ok(_) => Err("No error returned.".to_owned()),
+            Err(err) => match err {
+                DATError::Overflow(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+        }
+    }
+
+    #[test]
+    fn test_read_macro() -> Result<(), String> {
+        let mut dat_file = match DATFile::open(TEST_FILE_PATH) {
+            Ok(dat_file) => dat_file,
+            Err(err) => return Err(format!("Error opening file: {}", err)),
+        };
+        match read_macro(&mut dat_file) {
+            Ok(a_macro) => {
+                assert_eq!(a_macro.title, "0");
+                assert_eq!(a_macro.lines[0], "DefaultIcon");
+                assert_eq!(a_macro.get_icon().unwrap(), MacroIcon::DefaultIcon);
+                Ok(())
+            }
+            Err(err) => Err(format!("Error: {}", err)),
+        }
+    }
+
+    #[test]
+    fn test_read_macro_content() -> Result<(), String> {
+        match read_macro_content(TEST_FILE_PATH) {
+            Ok(macro_vec) => {
+                assert_eq!(macro_vec[0].title, "0");
+                assert_eq!(macro_vec[0].lines[0], "DefaultIcon");
+                assert_eq!(macro_vec[0].get_icon().unwrap(), MacroIcon::DefaultIcon);
+                assert_eq!(macro_vec.len(), EXPECTED_ITEM_COUNT);
+                Ok(())
+            }
+            Err(err) => Err(format!("Error: {}", err)),
+        }
+    }
+
+    #[test]
+    fn test_to_writeable_bytes() -> Result<(), String> {
+        let raw_bytes = match read_content(TEST_FILE_PATH) {
+            Ok(macro_bytes) => macro_bytes,
+            Err(err) => return Err(format!("Error reading file: {}", err)),
+        };
+        let macro_vec = match read_macro_content(TEST_FILE_PATH) {
+            Ok(macro_vec) => macro_vec,
+            Err(err) => return Err(format!("Error reading macros: {}", err)),
+        };
+        match to_writeable_bytes(&macro_vec) {
+            Ok(bytes) => Ok(assert_eq!(bytes, raw_bytes)),
+            Err(err) => Err(format!("Error: {}", err)),
+        }
+    }
+
+    #[test]
+    fn test_to_writeable_bytes_padding() -> Result<(), String> {
+        let macro_vec = match read_macro_content(TEST_FILE_PATH) {
+            Ok(macro_vec) => macro_vec,
+            Err(err) => return Err(format!("Error reading macros: {}", err)),
+        };
+        let bytes = match to_writeable_bytes(&macro_vec[..50]) {
+            Ok(bytes) => bytes,
+            Err(err) => return Err(format!("Error converting to bytes: {}", err)),
+        };
+        match as_macro_vec(&bytes) {
+            Ok(output_vec) => Ok(assert_eq!(output_vec.len(), EXPECTED_ITEM_COUNT)),
+            Err(err) => Err(format!("Error: {}", err)),
+        }
+    }
+
+    #[test]
+    fn test_to_writeable_bytes_error_count() -> Result<(), String> {
+        let mut macro_vec = match read_macro_content(TEST_FILE_PATH) {
+            Ok(macro_vec) => macro_vec,
+            Err(err) => return Err(format!("Error vectorizing macros: {}", err)),
+        };
+        macro_vec.push(Macro::new(String::new(), vec![String::new(); 15], MacroIcon::NoIcon).unwrap());
+        match to_writeable_bytes(&macro_vec) {
+            Ok(_) => Err("No error returned.".to_owned()),
+            Err(err) => match err {
+                DATError::Overflow(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+        }
+    }
+
+    // --- MacroData
+    #[test]
+    fn test_macrodata_change_icon() -> Result<(), String> {
+        let mut a_macro = MacroData::new("Title", vec!["Line"; 15], &MacroIcon::DefaultIcon).unwrap();
+        assert_eq!(a_macro.get_icon().unwrap(), MacroIcon::DefaultIcon);
+        a_macro.change_icon(&MacroIcon::SymbolCheck);
+        assert_eq!(a_macro.get_icon().unwrap(), MacroIcon::SymbolCheck);
+        Ok(())
+    }
+
+    #[test]
+    fn test_macrodata_from_sectiondata() -> Result<(), String> {
+        let mut sec_vec = vec![
+            SectionData::new("T", "Title").unwrap(),
+            SectionData::new("I", "0000000").unwrap(),
+            SectionData::new("K", "000").unwrap(),
+        ];
+        let mut line_vec = vec![SectionData::new("L", "Line").unwrap(); 15];
+        sec_vec.append(&mut line_vec);
+        match MacroData::from_section_data(sec_vec) {
+            Ok(a_macro) => {
+                assert_eq!(a_macro.title, "Title");
+                assert_eq!(a_macro.lines[0], "Line");
+                assert_eq!(a_macro.get_icon().unwrap(), MacroIcon::NoIcon);
+                Ok(())
+            }
+            Err(err) => Err(format!("Error: {}", err)),
+        }
+    }
+
+    #[test]
+    fn test_macrodata_from_sectiondata_error_title() -> Result<(), String> {
+        let mut sec_vec = vec![
+            SectionData::new("I", "0000000").unwrap(),
+            SectionData::new("K", "000").unwrap(),
+        ];
+        let mut line_vec = vec![SectionData::new("L", "Line").unwrap(); 15];
+        sec_vec.append(&mut line_vec);
+        match MacroData::from_section_data(sec_vec) {
+            Ok(_) => Err("No error returned.".to_owned()),
+            Err(err) => match err {
+                DATError::InvalidInput(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+        }
+    }
+
+    #[test]
+    fn test_macrodata_from_sectiondata_error_icon_id() -> Result<(), String> {
+        let mut sec_vec = vec![
+            SectionData::new("T", "Title").unwrap(),
+            SectionData::new("K", "000").unwrap(),
+        ];
+        let mut line_vec = vec![SectionData::new("L", "Line").unwrap(); 15];
+        sec_vec.append(&mut line_vec);
+        match MacroData::from_section_data(sec_vec) {
+            Ok(_) => Err("No error returned.".to_owned()),
+            Err(err) => match err {
+                DATError::InvalidInput(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+        }
+    }
+
+    #[test]
+    fn test_macrodata_from_sectiondata_error_icon_key() -> Result<(), String> {
+        let mut sec_vec = vec![
+            SectionData::new("T", "Title").unwrap(),
+            SectionData::new("I", "0000000").unwrap(),
+        ];
+        let mut line_vec = vec![SectionData::new("L", "Line").unwrap(); 15];
+        sec_vec.append(&mut line_vec);
+        match MacroData::from_section_data(sec_vec) {
+            Ok(_) => Err("No error returned.".to_owned()),
+            Err(err) => match err {
+                DATError::InvalidInput(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+        }
+    }
+
+    #[test]
+    fn test_macrodata_from_sectiondata_error_no_lines() -> Result<(), String> {
+        let sec_vec = vec![
+            SectionData::new("T", "Title").unwrap(),
+            SectionData::new("I", "0000000").unwrap(),
+            SectionData::new("K", "000").unwrap(),
+        ];
+        match MacroData::from_section_data(sec_vec) {
+            Ok(_) => Err("No error returned.".to_owned()),
+            Err(err) => match err {
+                DATError::InvalidInput(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+        }
+    }
+
+    #[test]
+    fn test_macrodata_from_sectiondata_error_lines_interrupted() -> Result<(), String> {
+        let mut sec_vec = vec![
+            SectionData::new("T", "Title").unwrap(),
+            SectionData::new("I", "0000000").unwrap(),
+            SectionData::new("K", "000").unwrap(),
+        ];
+        let mut line_vec = vec![SectionData::new("L", "Line").unwrap(); 15];
+        line_vec[1].tag = "I";
+        sec_vec.append(&mut line_vec);
+        match MacroData::from_section_data(sec_vec) {
+            Ok(_) => Err("No error returned.".to_owned()),
+            Err(err) => match err {
+                DATError::InvalidInput(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+        }
+    }
+
+    #[test]
+    fn test_macrodata_get_icon() -> Result<(), String> {
+        let a_macro = MacroData::new("Title", vec!["Line"; 15], &MacroIcon::DefaultIcon).unwrap();
+        assert_eq!(a_macro.get_icon().unwrap(), MacroIcon::DefaultIcon);
+        Ok(())
+    }
+
+    #[test]
+    fn test_macrodata_get_icon_none() -> Result<(), String> {
+        let a_macro = MacroData {
+            icon_id: "1231234",
+            icon_key: "XYZ",
+            lines: vec![""; 15],
+            title: "Title",
+        };
+        Ok(assert!(a_macro.get_icon().is_none()))
+    }
+
+    #[test]
+    fn test_macrodata_new() -> Result<(), String> {
+        match MacroData::new("Title", vec!["Line"; 15], &MacroIcon::SymbolCheck) {
+            Ok(a_macro) => {
+                assert_eq!(a_macro.title, "Title");
+                assert_eq!(a_macro.lines[0], "Line");
+                let (icon_key, icon_id) = macro_icon_to_key_and_id(&MacroIcon::SymbolCheck);
+                assert_eq!(a_macro.icon_id, icon_id);
+                assert_eq!(a_macro.icon_key, icon_key);
+                Ok(())
+            }
+            Err(err) => Err(format!("Error building macro: {}", err)),
+        }
+    }
+
+    #[test]
+    fn test_macrodata_validate() -> Result<(), String> {
+        let a_macro = MacroData::new("Title", vec!["Line"; 15], &MacroIcon::DefaultIcon).unwrap();
+        Ok(assert!(a_macro.validate().is_none()))
+    }
+
+    #[test]
+    fn test_macrodata_validate_error_title() -> Result<(), String> {
+        let a_macro = MacroData {
+            icon_id: "0000000",
+            icon_key: "000",
+            lines: vec![""; 15],
+            title: &std::iter::repeat("X").take(21).collect::<String>(),
+        };
+        match a_macro.validate() {
+            Some(err) => match err {
+                DATError::Overflow(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+            None => Err("No error returned.".to_owned()),
+        }
+    }
+
+    #[test]
+    fn test_macrodata_validate_error_icon() -> Result<(), String> {
+        let a_macro = MacroData {
+            icon_id: "0000000",
+            icon_key: "XYZ",
+            lines: vec![""; 15],
+            title: "",
+        };
+        match a_macro.validate() {
+            Some(err) => match err {
+                DATError::InvalidInput(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+            None => Err("No error returned.".to_owned()),
+        }
+    }
+
+    #[test]
+    fn test_macro_validate_error_line_len() -> Result<(), String> {
+        let long_line = std::iter::repeat("X").take(181).collect::<String>();
+        let a_macro = MacroData {
+            icon_id: "0000000",
+            icon_key: "000",
+            lines: vec![&long_line; 15],
+            title: "",
+        };
+        match a_macro.validate() {
+            Some(err) => match err {
+                DATError::Overflow(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+            None => Err("No error returned.".to_owned()),
+        }
+    }
+
+    #[test]
+    fn test_macrodata_validate_error_line_count_high() -> Result<(), String> {
+        let a_macro = MacroData {
+            icon_id: "0000000",
+            icon_key: "000",
+            lines: vec![""; 16],
+            title: "",
+        };
+        match a_macro.validate() {
+            Some(err) => match err {
+                DATError::Overflow(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+            None => Err("No error returned.".to_owned()),
+        }
+    }
+
+    #[test]
+    fn test_macrodata_validate_error_line_count_low() -> Result<(), String> {
+        let a_macro = MacroData {
+            icon_id: "0000000",
+            icon_key: "000",
+            lines: vec![""; 14],
+            title: "",
+        };
+        match a_macro.validate() {
+            Some(err) => match err {
+                DATError::Underflow(_) => Ok(()),
+                _ => Err(format!("Incorrect error: {}", err)),
+            },
+            None => Err("No error returned.".to_owned()),
+        }
+    }
 }

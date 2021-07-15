@@ -136,7 +136,7 @@ impl Write for DATFile {
             Err(_) => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
-                    DATError::ContentOverflow("Content too long to write."),
+                    DATError::Overflow("Content too long to write."),
                 ))
             }
         };
@@ -149,7 +149,7 @@ impl Write for DATFile {
                 if new_content_size > self.max_size {
                     return Err(std::io::Error::new(
                         std::io::ErrorKind::InvalidInput,
-                        DATError::ContentOverflow("Content size would exdeed maximum size after write."),
+                        DATError::Overflow("Content size would exdeed maximum size after write."),
                     ));
                 }
                 // Write the new content size
@@ -159,9 +159,7 @@ impl Write for DATFile {
             None => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
-                    DATError::ContentOverflow(
-                        "Content size would exceed maximum possible size (u32::MAX) after write.",
-                    ),
+                    DATError::Overflow("Content size would exceed maximum possible size (u32::MAX) after write."),
                 ))
             }
         };
@@ -304,7 +302,7 @@ impl DATFile {
     /// If an I/O error creating the file occurs, a [`DATError::FileIO`](crate::dat_error::DATError::FileIO)
     /// error will be returned wrapping the underlying FS error.
     ///
-    /// A [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow) is returned
+    /// A [`DATError::Overflow`](crate::dat_error::DATError::Overflow) is returned
     /// if the provided content size is too large, or if the content size exceeds the maximum size.
     ///
     /// # Examples
@@ -469,7 +467,7 @@ impl DATFile {
     /// This function will return any underling I/O errors as a
     /// [`DATError::FileIO`](crate::dat_error::DATError::FileIO).
     ///
-    /// Additionally, it may return a [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow)
+    /// Additionally, it may return a [`DATError::Overflow`](crate::dat_error::DATError::Overflow)
     /// error if the new content size would exceed the maximum allowed size. This size may be adjusted using
     /// [`set_max_size()`](Self::set_max_size()), but modifying it may not produce a valid file for the game client.
     pub fn set_content_size(&mut self, new_size: u32) -> Result<(), DATError> {
@@ -482,7 +480,7 @@ impl DATFile {
             return Err(DATError::InvalidInput("Content size must be > 0."));
         }
         if new_size > self.max_size {
-            return Err(DATError::ContentOverflow("Content size would exceed maximum size."));
+            return Err(DATError::Overflow("Content size would exceed maximum size."));
         }
         // Save pre-run cursor.
         let pre_cursor = self.raw_file.seek(SeekFrom::Current(0))?;
@@ -538,7 +536,7 @@ impl DATFile {
     /// This function will return any underling I/O errors as a
     /// [`DATError::FileIO`](crate::dat_error::DATError::FileIO).
     ///
-    /// A [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow) is returned
+    /// A [`DATError::Overflow`](crate::dat_error::DATError::Overflow) is returned
     /// if the maximum size would be shorter than the content size after shrinking. To correct this,
     /// first [`set_content_size()`](Self::set_content_size()).
     pub fn set_max_size(&mut self, new_size: u32) -> Result<(), DATError> {
@@ -551,7 +549,7 @@ impl DATFile {
         }
         // Check for valid size
         if new_size < self.content_size {
-            return Err(DATError::ContentOverflow("Content size would exceed maximum size."));
+            return Err(DATError::Overflow("Content size would exceed maximum size."));
         }
         // Safe to resize
         self.raw_file.set_len((new_size + MAX_SIZE_OFFSET) as u64)?;
@@ -711,10 +709,10 @@ pub fn get_header_contents(header: &[u8; HEADER_SIZE as usize]) -> Result<(DATTy
 /// A [`DATError::BadHeader`](crate::dat_error::DATError::BadHeader) will be returned if the file header
 /// cannot be validated, indicating a non-DAT or corrupt file.
 ///
-/// A [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow) is returned if the content
+/// A [`DATError::Overflow`](crate::dat_error::DATError::Overflow) is returned if the content
 /// would exceed the maximum size specified in the header.
 ///
-/// On 16-bit platforms, a [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow) may be returned
+/// On 16-bit platforms, a [`DATError::Overflow`](crate::dat_error::DATError::Overflow) may be returned
 /// if the content is too long to fit into a 16-bit vec. Content length can never exceed u32::MAX, so this error
 /// is impossible on other platforms.
 ///
@@ -748,7 +746,7 @@ pub fn read_content<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, DATError> {
 /// A [`DATError::BadHeader`](crate::dat_error::DATError::BadHeader) will be returned if the file header
 /// cannot be validated, indicating a non-DAT or corrupt file.
 ///
-/// A [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow) is returned if the content
+/// A [`DATError::Overflow`](crate::dat_error::DATError::Overflow) is returned if the content
 /// would exceed the maximum size specified in the header or the maximum possible size (u32::MAX).
 ///
 /// # Examples
@@ -774,7 +772,7 @@ pub fn write_content<P: AsRef<Path>>(path: P, buf: &[u8]) -> Result<usize, DATEr
         }
         Ok(dat_file.write(&buf)?)
     } else {
-        Err(DATError::ContentOverflow(
+        Err(DATError::Overflow(
             "Content size would exceed maximum possible size (u32::MAX).",
         ))
     }
@@ -1105,7 +1103,7 @@ mod tests {
         match dat_file.set_content_size(8) {
             Ok(_) => Err("No error returned.".to_owned()),
             Err(err) => match err {
-                DATError::ContentOverflow(_) => Ok(()),
+                DATError::Overflow(_) => Ok(()),
                 _ => Err(format!("Incorrect error: {}", err)),
             },
         }
@@ -1197,7 +1195,7 @@ mod tests {
         match dat_file.set_max_size(2) {
             Ok(_) => Err("No error returned.".to_owned()),
             Err(err) => match err {
-                DATError::ContentOverflow(_) => Ok(()),
+                DATError::Overflow(_) => Ok(()),
                 _ => Err(format!("Incorrect error: {}", err)),
             },
         }

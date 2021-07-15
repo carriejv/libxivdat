@@ -110,10 +110,10 @@ impl TryFrom<&[u8]> for Section {
         let remaining_buf_size = x.len() - 3;
 
         match usize::from(content_size).cmp(&remaining_buf_size) {
-            Ordering::Greater => Err(DATError::ContentOverflow(
+            Ordering::Greater => Err(DATError::Overflow(
                 "Data buffer is too small for content_size specified in header.",
             )),
-            Ordering::Less => Err(DATError::ContentUnderflow(
+            Ordering::Less => Err(DATError::Underflow(
                 "Data buffer is too large for content_size specified in header.",
             )),
             Ordering::Equal => Ok(Section {
@@ -158,10 +158,10 @@ impl<'a> TryFrom<&'a [u8]> for SectionData<'a> {
         let remaining_buf_size = x.len() - 3;
 
         match usize::from(content_size).cmp(&remaining_buf_size) {
-            Ordering::Greater => Err(DATError::ContentOverflow(
+            Ordering::Greater => Err(DATError::Overflow(
                 "Data buffer is too small for content_size specified in header.",
             )),
-            Ordering::Less => Err(DATError::ContentUnderflow(
+            Ordering::Less => Err(DATError::Underflow(
                 "Data buffer is too large for content_size specified in header.",
             )),
             Ordering::Equal => Ok(SectionData {
@@ -193,7 +193,7 @@ impl Section {
         let content_size = match u16::try_from(content.len() + 1) {
             Ok(content_size) => content_size,
             Err(_) => {
-                return Err(DATError::ContentOverflow(
+                return Err(DATError::Overflow(
                     "Section content exceeds maximum possible size (u16::MAX - 1).",
                 ))
             }
@@ -226,7 +226,7 @@ impl<'a> SectionData<'a> {
         let content_size = match u16::try_from(content.len() + 1) {
             Ok(content_size) => content_size,
             Err(_) => {
-                return Err(DATError::ContentOverflow(
+                return Err(DATError::Overflow(
                     "Section content exceeds maximum possible size (u16::MAX - 1).",
                 ))
             }
@@ -243,8 +243,8 @@ impl<'a> SectionData<'a> {
 ///
 /// # Errors
 ///
-/// Returns a [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow) or
-/// [`DATError::ContentUnderflow`](crate::dat_error::DATError::ContentUnderflow) if the slice length
+/// Returns a [`DATError::Overflow`](crate::dat_error::DATError::Overflow) or
+/// [`DATError::Underflow`](crate::dat_error::DATError::Underflow) if the slice length
 /// does not match the content_size specified in the section header.
 ///
 /// If the tag or content is not valid utf8 text, a [`DATError::BadEncoding`](crate::dat_error::DATError::BadEncoding)
@@ -273,8 +273,8 @@ pub fn as_section(bytes: &[u8]) -> Result<SectionData, DATError> {
 ///
 /// # Errors
 ///
-/// Returns a [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow) or
-/// [`DATError::ContentUnderflow`](crate::dat_error::DATError::ContentUnderflow) if a section content block
+/// Returns a [`DATError::Overflow`](crate::dat_error::DATError::Overflow) or
+/// [`DATError::Underflow`](crate::dat_error::DATError::Underflow) if a section content block
 /// does not match the expected length specified in the section header.
 ///
 /// If the tag or content is not valid utf8 text, a [`DATError::BadEncoding`](crate::dat_error::DATError::BadEncoding)
@@ -310,12 +310,10 @@ pub fn as_section_vec<'a>(bytes: &'a [u8]) -> Result<Vec<SectionData<'a>>, DATEr
         cursor += usize::from(content_size);
         // Validate content size
         if content_bytes.contains(&0u8) {
-            return Err(DATError::ContentUnderflow("Section content ended early."));
+            return Err(DATError::Underflow("Section content ended early."));
         }
         if bytes[cursor - 1] != 0u8 {
-            return Err(DATError::ContentOverflow(
-                "Section data did not end at the expected index.",
-            ));
+            return Err(DATError::Overflow("Section data did not end at the expected index."));
         }
         // Build a section and push to vec
         res_vec.push(SectionData::<'a> {
@@ -395,8 +393,8 @@ pub fn read_section(dat_file: &mut DATFile) -> Result<Section, DATError> {
 /// Returns [`DATError::IncorrectType`] if the file appears to be of a [`DATType`]
 /// that does not contain sections.
 ///
-/// Returns a [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow) or
-/// [`DATError::ContentUnderflow`](crate::dat_error::DATError::ContentUnderflow) if a section content block
+/// Returns a [`DATError::Overflow`](crate::dat_error::DATError::Overflow) or
+/// [`DATError::Underflow`](crate::dat_error::DATError::Underflow) if a section content block
 /// does not match the expected length specified in the section header.
 ///
 /// Returns a [`DATError::BadEncoding`](crate::dat_error::DATError::BadEncoding) if a section does not
@@ -496,8 +494,8 @@ pub fn read_section_unsafe(dat_file: &mut DATFile) -> Result<Section, DATError> 
 ///
 /// # Errors
 ///
-/// Returns a [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow) or
-/// [`DATError::ContentUnderflow`](crate::dat_error::DATError::ContentUnderflow) if a section content block
+/// Returns a [`DATError::Overflow`](crate::dat_error::DATError::Overflow) or
+/// [`DATError::Underflow`](crate::dat_error::DATError::Underflow) if a section content block
 /// does not match the expected length specified in the section header.
 ///
 /// Returns a [`DATError::BadEncoding`](crate::dat_error::DATError::BadEncoding) if a section does not
@@ -592,7 +590,7 @@ mod tests {
         match as_section_vec(&sec_bytes) {
             Ok(_) => Err("No error returned.".to_owned()),
             Err(err) => match err {
-                DATError::ContentOverflow(_) => Ok(()),
+                DATError::Overflow(_) => Ok(()),
                 _ => Err(format!("Incorrect error: {}", err)),
             },
         }
@@ -609,7 +607,7 @@ mod tests {
         match as_section_vec(&sec_bytes) {
             Ok(_) => Err("No error returned.".to_owned()),
             Err(err) => match err {
-                DATError::ContentUnderflow(_) => Ok(()),
+                DATError::Underflow(_) => Ok(()),
                 _ => Err(format!("Incorrect error: {}", err)),
             },
         }
@@ -739,7 +737,7 @@ mod tests {
         match Section::new("T".to_string(), (0..u16::MAX).map(|_| "X").collect()) {
             Ok(_) => Err("No error returned".to_owned()),
             Err(err) => match err {
-                DATError::ContentOverflow(_) => Ok(()),
+                DATError::Overflow(_) => Ok(()),
                 _ => Err(format!("Incorrect error: {}", err)),
             },
         }
@@ -763,7 +761,7 @@ mod tests {
         match Section::try_from(&TEST_SEC_TOO_SHORT[..]) {
             Ok(_) => Err("No error returned.".to_owned()),
             Err(err) => match err {
-                DATError::ContentOverflow(_) => Ok(()),
+                DATError::Overflow(_) => Ok(()),
                 _ => Err(format!("Incorrect error: {}", err)),
             },
         }
@@ -774,7 +772,7 @@ mod tests {
         match Section::try_from(&TEST_SEC_TOO_LONG[..]) {
             Ok(_) => Err("No error returned.".to_owned()),
             Err(err) => match err {
-                DATError::ContentUnderflow(_) => Ok(()),
+                DATError::Underflow(_) => Ok(()),
                 _ => Err(format!("Incorrect error: {}", err)),
             },
         }
@@ -846,7 +844,7 @@ mod tests {
         match SectionData::new("T", &(0..u16::MAX).map(|_| "X").collect::<String>()) {
             Ok(_) => Err("No error returned".to_owned()),
             Err(err) => match err {
-                DATError::ContentOverflow(_) => Ok(()),
+                DATError::Overflow(_) => Ok(()),
                 _ => Err(format!("Incorrect error: {}", err)),
             },
         }
@@ -870,7 +868,7 @@ mod tests {
         match SectionData::try_from(&TEST_SEC_TOO_SHORT[..]) {
             Ok(_) => Err("No error returned.".to_owned()),
             Err(err) => match err {
-                DATError::ContentOverflow(_) => Ok(()),
+                DATError::Overflow(_) => Ok(()),
                 _ => Err(format!("Incorrect error: {}", err)),
             },
         }
@@ -881,7 +879,7 @@ mod tests {
         match SectionData::try_from(&TEST_SEC_TOO_LONG[..]) {
             Ok(_) => Err("No error returned.".to_owned()),
             Err(err) => match err {
-                DATError::ContentUnderflow(_) => Ok(()),
+                DATError::Underflow(_) => Ok(()),
                 _ => Err(format!("Incorrect error: {}", err)),
             },
         }
