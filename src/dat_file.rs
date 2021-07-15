@@ -31,7 +31,7 @@ const INDEX_CONTENT_SIZE: usize = 0x08;
 /// use libxivdat::dat_type::DATType;
 /// use std::io::Read;
 ///
-/// let mut dat_file = match DATFile::open("./resources/TEST_MACRO.DAT") {
+/// let mut dat_file = match DATFile::open("./resources/TEST_XOR.DAT") {
 ///     Ok(dat_file) => dat_file,
 ///     Err(_) => panic!("Something broke!")
 /// };
@@ -136,7 +136,7 @@ impl Write for DATFile {
             Err(_) => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
-                    DATError::ContentOverflow("Content too long to write."),
+                    DATError::Overflow("Content too long to write."),
                 ))
             }
         };
@@ -149,7 +149,7 @@ impl Write for DATFile {
                 if new_content_size > self.max_size {
                     return Err(std::io::Error::new(
                         std::io::ErrorKind::InvalidInput,
-                        DATError::ContentOverflow("Content size would exdeed maximum size after write."),
+                        DATError::Overflow("Content size would exdeed maximum size after write."),
                     ));
                 }
                 // Write the new content size
@@ -159,9 +159,7 @@ impl Write for DATFile {
             None => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
-                    DATError::ContentOverflow(
-                        "Content size would exceed maximum possible size (u32::MAX) after write.",
-                    ),
+                    DATError::Overflow("Content size would exceed maximum possible size (u32::MAX) after write."),
                 ))
             }
         };
@@ -198,7 +196,7 @@ impl DATFile {
     /// let mut dat_file = DATFile::open("./resources/TEST.DAT").unwrap();
     /// let content_size = dat_file.content_size();
     /// ```
-    pub fn content_size(&mut self) -> u32 {
+    pub fn content_size(&self) -> u32 {
         self.content_size
     }
 
@@ -304,7 +302,7 @@ impl DATFile {
     /// If an I/O error creating the file occurs, a [`DATError::FileIO`](crate::dat_error::DATError::FileIO)
     /// error will be returned wrapping the underlying FS error.
     ///
-    /// A [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow) is returned
+    /// A [`DATError::Overflow`](crate::dat_error::DATError::Overflow) is returned
     /// if the provided content size is too large, or if the content size exceeds the maximum size.
     ///
     /// # Examples
@@ -337,13 +335,13 @@ impl DATFile {
     /// use libxivdat::dat_file::DATFile;
     /// use libxivdat::dat_type::DATType;
     ///
-    /// let mut dat_file = DATFile::open("./resources/TEST_MACRO.DAT").unwrap();
+    /// let mut dat_file = DATFile::open("./resources/TEST_XOR.DAT").unwrap();
     /// match dat_file.file_type() {
     ///     DATType::Macro => println!("Macro file!"),
     ///     _ => panic!("Nope!")
     /// }
     /// ```
-    pub fn file_type(&mut self) -> DATType {
+    pub fn file_type(&self) -> DATType {
         self.file_type
     }
 
@@ -356,10 +354,10 @@ impl DATFile {
     /// ```rust
     /// use libxivdat::dat_file::DATFile;
     ///
-    /// let mut dat_file = DATFile::open("./resources/TEST_MACRO.DAT").unwrap();
+    /// let mut dat_file = DATFile::open("./resources/TEST_XOR.DAT").unwrap();
     /// let header_end_byte = dat_file.header_end_byte();
     /// ```
-    pub fn header_end_byte(&mut self) -> u8 {
+    pub fn header_end_byte(&self) -> u8 {
         self.header_end_byte
     }
 
@@ -372,10 +370,10 @@ impl DATFile {
     /// ```rust
     /// use libxivdat::dat_file::DATFile;
     ///
-    /// let mut dat_file = DATFile::open("./resources/TEST_MACRO.DAT").unwrap();
+    /// let mut dat_file = DATFile::open("./resources/TEST_XOR.DAT").unwrap();
     /// let header_end_byte = dat_file.max_size();
     /// ```
-    pub fn max_size(&mut self) -> u32 {
+    pub fn max_size(&self) -> u32 {
         self.max_size
     }
 
@@ -469,7 +467,7 @@ impl DATFile {
     /// This function will return any underling I/O errors as a
     /// [`DATError::FileIO`](crate::dat_error::DATError::FileIO).
     ///
-    /// Additionally, it may return a [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow)
+    /// Additionally, it may return a [`DATError::Overflow`](crate::dat_error::DATError::Overflow)
     /// error if the new content size would exceed the maximum allowed size. This size may be adjusted using
     /// [`set_max_size()`](Self::set_max_size()), but modifying it may not produce a valid file for the game client.
     pub fn set_content_size(&mut self, new_size: u32) -> Result<(), DATError> {
@@ -482,7 +480,7 @@ impl DATFile {
             return Err(DATError::InvalidInput("Content size must be > 0."));
         }
         if new_size > self.max_size {
-            return Err(DATError::ContentOverflow("Content size would exceed maximum size."));
+            return Err(DATError::Overflow("Content size would exceed maximum size."));
         }
         // Save pre-run cursor.
         let pre_cursor = self.raw_file.seek(SeekFrom::Current(0))?;
@@ -538,7 +536,7 @@ impl DATFile {
     /// This function will return any underling I/O errors as a
     /// [`DATError::FileIO`](crate::dat_error::DATError::FileIO).
     ///
-    /// A [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow) is returned
+    /// A [`DATError::Overflow`](crate::dat_error::DATError::Overflow) is returned
     /// if the maximum size would be shorter than the content size after shrinking. To correct this,
     /// first [`set_content_size()`](Self::set_content_size()).
     pub fn set_max_size(&mut self, new_size: u32) -> Result<(), DATError> {
@@ -551,7 +549,7 @@ impl DATFile {
         }
         // Check for valid size
         if new_size < self.content_size {
-            return Err(DATError::ContentOverflow("Content size would exceed maximum size."));
+            return Err(DATError::Overflow("Content size would exceed maximum size."));
         }
         // Safe to resize
         self.raw_file.set_len((new_size + MAX_SIZE_OFFSET) as u64)?;
@@ -566,7 +564,7 @@ impl DATFile {
     ///
     /// This function will return any underling I/O errors as a
     /// [`DATError::FileIO`](crate::dat_error::DATError::FileIO).
-    pub fn sync_all(&mut self) -> Result<(), DATError> {
+    pub fn sync_all(&self) -> Result<(), DATError> {
         Ok(self.raw_file.sync_all()?)
     }
 
@@ -576,7 +574,7 @@ impl DATFile {
     ///
     /// This function will return any underling I/O errors as a
     /// [`DATError::FileIO`](crate::dat_error::DATError::FileIO).
-    pub fn sync_data(&mut self) -> Result<(), DATError> {
+    pub fn sync_data(&self) -> Result<(), DATError> {
         Ok(self.raw_file.sync_data()?)
     }
 
@@ -615,6 +613,31 @@ impl DATFile {
         self.max_size = size;
         Ok(())
     }
+}
+
+/// Checks the [`DATType`] of a DAT file based on the header contents. This should be treated as a best guess,
+/// since the header is not fully understood.
+///
+/// # Errors
+///
+/// If an I/O error occurs while reading the file, a [`DATError::FileIO`](crate::dat_error::DATError::FileIO)
+/// error will be returned wrapping the underlying FS error.
+///
+/// A [`DATError::BadHeader`](crate::dat_error::DATError::BadHeader) will be returned if the file header
+/// cannot be validated, indicating a non-DAT or corrupt file.
+///
+/// # Examples
+///
+/// ```rust
+/// use libxivdat::dat_file::check_type;
+/// use libxivdat::dat_type::DATType;
+///
+/// let dat_type = check_type("./resources/TEST_XOR.DAT").unwrap();
+/// assert_eq!(dat_type, DATType::Macro);
+/// ```
+pub fn check_type<P: AsRef<Path>>(path: P) -> Result<DATType, DATError> {
+    let dat_file = DATFile::open(path)?;
+    Ok(dat_file.file_type())
 }
 
 /// Tries to read an 0x11 length byte array as a DAT file header.
@@ -680,16 +703,16 @@ pub fn get_header_contents(header: &[u8; HEADER_SIZE as usize]) -> Result<(DATTy
 ///
 /// # Errors
 ///
-/// If an I/O error occurs while writing to the file, a [`DATError::FileIO`](crate::dat_error::DATError::FileIO)
+/// If an I/O error occurs while reading the file, a [`DATError::FileIO`](crate::dat_error::DATError::FileIO)
 /// error will be returned wrapping the underlying FS error.
 ///
 /// A [`DATError::BadHeader`](crate::dat_error::DATError::BadHeader) will be returned if the file header
 /// cannot be validated, indicating a non-DAT or corrupt file.
 ///
-/// A [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow) is returned if the content
+/// A [`DATError::Overflow`](crate::dat_error::DATError::Overflow) is returned if the content
 /// would exceed the maximum size specified in the header.
 ///
-/// On 16-bit platforms, a [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow) may be returned
+/// On 16-bit platforms, a [`DATError::Overflow`](crate::dat_error::DATError::Overflow) may be returned
 /// if the content is too long to fit into a 16-bit vec. Content length can never exceed u32::MAX, so this error
 /// is impossible on other platforms.
 ///
@@ -723,7 +746,7 @@ pub fn read_content<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, DATError> {
 /// A [`DATError::BadHeader`](crate::dat_error::DATError::BadHeader) will be returned if the file header
 /// cannot be validated, indicating a non-DAT or corrupt file.
 ///
-/// A [`DATError::ContentOverflow`](crate::dat_error::DATError::ContentOverflow) is returned if the content
+/// A [`DATError::Overflow`](crate::dat_error::DATError::Overflow) is returned if the content
 /// would exceed the maximum size specified in the header or the maximum possible size (u32::MAX).
 ///
 /// # Examples
@@ -749,7 +772,7 @@ pub fn write_content<P: AsRef<Path>>(path: P, buf: &[u8]) -> Result<usize, DATEr
         }
         Ok(dat_file.write(&buf)?)
     } else {
-        Err(DATError::ContentOverflow(
+        Err(DATError::Overflow(
             "Content size would exceed maximum possible size (u32::MAX).",
         ))
     }
@@ -765,12 +788,20 @@ mod tests {
     use super::*;
     use std::fs::copy;
     const TEST_PATH: &str = "./resources/TEST.DAT";
-    const TEST_MACRO_PATH: &str = "./resources/TEST_MACRO.DAT";
+    const TEST_XOR_PATH: &str = "./resources/TEST_XOR.DAT";
     const TEST_EMPTY_PATH: &str = "./resources/TEST_EMPTY.DAT";
     const TEST_CONTENTS: &[u8; 5] = b"Boop!";
-    const TEST_MACRO_CONTENTS: &[u8; 6] = b"Macro!";
+    const TEST_XOR_CONTENTS: &[u8; 6] = b"Macro!";
 
     // --- Module Functions
+
+    #[test]
+    fn test_check_type() -> Result<(), String> {
+        match check_type(TEST_XOR_PATH) {
+            Ok(dat_type) => Ok(assert_eq!(dat_type, DATType::Macro)),
+            Err(err) => Err(format!("Read error: {}", err)),
+        }
+    }
 
     #[test]
     fn test_get_header_contents() -> Result<(), String> {
@@ -826,8 +857,8 @@ mod tests {
 
     #[test]
     fn test_read_content_with_mask() -> Result<(), String> {
-        match read_content(TEST_MACRO_PATH) {
-            Ok(content_bytes) => Ok(assert_eq!(&content_bytes, TEST_MACRO_CONTENTS)),
+        match read_content(TEST_XOR_PATH) {
+            Ok(content_bytes) => Ok(assert_eq!(&content_bytes, TEST_XOR_CONTENTS)),
             Err(err) => Err(format!("Read error: {}", err)),
         }
     }
@@ -862,7 +893,7 @@ mod tests {
     #[test]
     fn test_datfile_open() -> Result<(), String> {
         match DATFile::open(TEST_PATH) {
-            Ok(mut dat_file) => {
+            Ok(dat_file) => {
                 assert_eq!(dat_file.content_size(), 6);
                 assert_eq!(dat_file.max_size, 7);
                 assert_eq!(dat_file.header_end_byte(), 0xFF);
@@ -875,8 +906,8 @@ mod tests {
 
     #[test]
     fn test_datfile_open_detect_type() -> Result<(), String> {
-        match DATFile::open(TEST_MACRO_PATH) {
-            Ok(mut dat_file) => {
+        match DATFile::open(TEST_XOR_PATH) {
+            Ok(dat_file) => {
                 assert_eq!(dat_file.content_size(), 7);
                 assert_eq!(dat_file.max_size, 8);
                 assert_eq!(dat_file.header_end_byte(), 0xFF);
@@ -892,7 +923,7 @@ mod tests {
         let mut opts = std::fs::OpenOptions::new();
         opts.read(true).write(true);
         match DATFile::open_options(TEST_PATH, &mut opts) {
-            Ok(mut dat_file) => {
+            Ok(dat_file) => {
                 assert_eq!(dat_file.content_size(), 6);
                 assert_eq!(dat_file.max_size, 7);
                 assert_eq!(dat_file.header_end_byte(), 0xFF);
@@ -911,7 +942,7 @@ mod tests {
         };
         let tmp_path = tmp_dir.path().join("TEST.DAT");
         match DATFile::create(&tmp_path, DATType::Macro) {
-            Ok(mut dat_file) => {
+            Ok(dat_file) => {
                 assert_eq!(dat_file.content_size(), 1);
                 assert_eq!(
                     dat_file.max_size,
@@ -970,7 +1001,7 @@ mod tests {
         };
         let tmp_path = tmp_dir.path().join("TEST.DAT");
         match DATFile::create_unsafe(&tmp_path, DATType::Macro, 256, 512, 0) {
-            Ok(mut dat_file) => {
+            Ok(dat_file) => {
                 assert_eq!(dat_file.content_size(), 256);
                 assert_eq!(dat_file.max_size, 512);
                 assert_eq!(dat_file.header_end_byte(), 0);
@@ -1072,7 +1103,7 @@ mod tests {
         match dat_file.set_content_size(8) {
             Ok(_) => Err("No error returned.".to_owned()),
             Err(err) => match err {
-                DATError::ContentOverflow(_) => Ok(()),
+                DATError::Overflow(_) => Ok(()),
                 _ => Err(format!("Incorrect error: {}", err)),
             },
         }
@@ -1164,7 +1195,7 @@ mod tests {
         match dat_file.set_max_size(2) {
             Ok(_) => Err("No error returned.".to_owned()),
             Err(err) => match err {
-                DATError::ContentOverflow(_) => Ok(()),
+                DATError::Overflow(_) => Ok(()),
                 _ => Err(format!("Incorrect error: {}", err)),
             },
         }
@@ -1185,13 +1216,13 @@ mod tests {
 
     #[test]
     fn test_datfile_read_with_mask() -> Result<(), String> {
-        let mut dat_file = match DATFile::open(TEST_MACRO_PATH) {
+        let mut dat_file = match DATFile::open(TEST_XOR_PATH) {
             Ok(dat_file) => dat_file,
             Err(err) => return Err(format!("Open error: {}", err)),
         };
         let mut buf = [0u8; 1];
         match dat_file.read(&mut buf) {
-            Ok(_) => Ok(assert_eq!(buf, TEST_MACRO_CONTENTS[0..1])),
+            Ok(_) => Ok(assert_eq!(buf, TEST_XOR_CONTENTS[0..1])),
             Err(err) => Err(format!("Read error: {}", err)),
         }
     }

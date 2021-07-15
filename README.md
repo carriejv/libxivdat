@@ -7,7 +7,7 @@
 
 A library for working with Final Fantasy XIV .DAT files. These files store client-side game config including macros, hotkeys, and ui settings.
 
-This is still a work in progress and currently provides only low-level file io capabilities. See [future plans](#future-plans) for more info.
+This is still a work in progress and support for all DAT files is incomplete. See [future plans](#future-plans) for more info.
 
 ## Minimum Supported Rust Version
 
@@ -17,29 +17,19 @@ CI builds are run against current stable and nightly at time of build.
 
 ## DATFile
 
-`DATFile` provides a common, general-purpose method of working with binary DAT files. `DATFile` emulates Rust's std lib `File` but reads and writes only from the inner content block of .DAT files, automatically handling header updates, padding, and masking as necessary.
+`DATFile` provides a common, low-level method of working with binary DAT files. `DATFile` emulates Rust's std lib `File` but reads and writes only from the inner content block of .DAT files, automatically handling header updates, padding, and masking as necessary.
 
-### Examples
+## High Level Modules
 
-```rust
-extern crate libxivdat;
-use libxivdat::dat_file::{DATFile,DATType};
+Higher-level support for specific file types is implemented on a type-by-type basis as optional features. See the [chart below](#dat-type-support) for more information and feature names.
 
-let mut dat_file = DATFile::open("GEARSET.DAT")?;
-if dat_file.file_type == DATType::Gearset {
-    let mut gs_1_bytes = [0u8; 444];
-    dat_file.read(&gs_1_bytes)?;
-}
-else {
-     panic!("Not a gearset file!");
-}
-```
+High level modules allow working with DAT files at a resource level (ie, Macros or Gearsets) as opposed to working with raw byte streams from `DATFile`.
 
 ## DAT Data Content
 
 Most DAT files (excluding those marked as "Unique" in the support table), share a common file structure consisting of a header, content block, and footer.
 
-Internally, some DAT file content blocks use a variable-length data structure referred to as a `Section` in this library. A Section consists of a single UTF-8 char type tag, u8 size, and a null-terminated UTF-8 string. A single resource (ie, a macro) is then comprised of a repeating pattern of Sections.
+Internally, some DAT file content blocks use a variable-length data structure referred to as a `section` in this library. A section consists of a single UTF-8 char type tag, u16le size, and a null-terminated UTF-8 string. A single resource (ie, a macro) is then comprised of a repeating pattern of sections. A toolkit for working with sections is provided in the `section` submodule.
 
 Other DAT files use fixed-size resource blocks, with each resource immediately following the last. These are referred to as "Block DATs" below.
 
@@ -61,9 +51,15 @@ My focus with this libary is mainly on macros, gearsets, and ui config. High lev
 
 ## DAT Type Support
 
+| Symbol | Description     |
+|--------|-----------------|
+|   ✅   | Full support    |
+|   🌀   | Partial support |
+|   ❌   | No support      |
+
 | File               | Contains                         | Type       | DATFile Read/Write | High Level Module |
 |--------------------|----------------------------------|------------|--------------------|-------------------|
-| ACQ.DAT            | Recent /tell history             | Section    |         ✅         |         ❌        |
+| ACQ.DAT            | Recent /tell history             | Section    |         ✅         |   🌀 - `section`  |
 | ADDON.DAT          | ?                                | Unique     |         ❌         |         ❌        |
 | COMMON.DAT         | Character configuration          | Plaintext  |         ❌         |         ❌        |
 | CONTROL0.DAT       | Gamepad control config           | Plaintext  |         ❌         |         ❌        |
@@ -74,10 +70,10 @@ My focus with this libary is mainly on macros, gearsets, and ui config. High lev
 | HOTBAR.DAT         | Hotbar layouts                   | Block      |         ✅         |         ❌        |
 | ITEMFDR.DAT        | "Search for item" indexing?      | Block      |         ✅         |         ❌        |
 | ITEMODR.DAT        | Item order in bags               | Block      |         ✅         |         ❌        |
-| KEYBIND.DAT        | Keybinds                         | Section    |         ✅         |         ❌        |
+| KEYBIND.DAT        | Keybinds                         | Section    |         ✅         |   🌀 - `section`  |
 | LOGFLTR.DAT        | Chat log filters?                | Block      |         ✅         |         ❌        |
-| MACRO.DAT          | Character-specific macros        | Section    |         ✅         |         ❌        |
-| MACROSYS.DAT       | System-wide macros               | Sections   |         ✅         |         ❌        |
+| MACRO.DAT          | Character-specific macros        | Section    |         ✅         |    ✅ - `macro`   |
+| MACROSYS.DAT       | System-wide macros               | Section    |         ✅         |    ✅ - `macro`   |
 | UISAVE.DAT         | UI config                        | Block      |         ✅         |         ❌        |
 
 ## Special Thanks
@@ -86,4 +82,4 @@ My focus with this libary is mainly on macros, gearsets, and ui config. High lev
 
 ## Contributing
 
-Contributions are always welcomed. Please ensure code passes `cargo test`, `cargo clippy`, and `rustfmt -v --check **/*.rs` before making pull requests.
+Contributions are always welcomed. Please ensure code passes `cargo test --all-features`, `cargo clippy --all-features`, and `rustfmt -v --check **/*.rs` before making pull requests.
